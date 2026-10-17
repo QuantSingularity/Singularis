@@ -1,0 +1,43 @@
+# Network-isolated runtime for Singularis.
+#
+# The agent container sits on an internal-only network with no route to the internet.
+# Its only way out is the egress proxy, which allows HTTPS CONNECT to api.anthropic.com:443 and nothing else.
+# Tool subprocesses do not receive the proxy variables or the API key, and tool code that tries to connect
+# directly has no route out.
+#
+# Use scripts/docker_run.sh, which sets LOCAL_UID and LOCAL_GID so the container user can write to ./runs.
+# Verify the stack with scripts/verify_docker.sh (runs `singularis isolation-check` inside the container).
+name: singularis
+
+services:
+  singularis:
+    build:
+      context: ..
+      dockerfile: infrastructure/Dockerfile
+    user: "${LOCAL_UID:-10001}:${LOCAL_GID:-10001}"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      HTTPS_PROXY: http://egress-proxy:3128
+      HTTP_PROXY: http://egress-proxy:3128
+    networks: [sandbox]
+    depends_on: [egress-proxy]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 8g
+    cpus: 4
+    volumes:
+      - ../runs:/app/runs
+
+  egress-proxy:
+    image: ubuntu/squid:latest
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:ro
+    networks: [sandbox, egress]
+
+networks:
+  sandbox:
+    internal: true
+  egress: {}

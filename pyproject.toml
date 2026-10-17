@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "singularis"
+version = "0.1.0"
+description = "Self-improving agent research framework: agents that evaluate, diagnose, and rewrite their own code under a frozen evaluator."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "QuantSingularity Research Institute" }]
+dependencies = []
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+singularis = "backend.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["code"]
+include = ["ai_models*", "backend*"]

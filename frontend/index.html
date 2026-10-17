@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Singularis Lineage Viewer</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #1b1f24;
+        --muted: #59636e;
+        --line: #d0d7de;
+        --card: #f6f8fa;
+        --ok: #1a7f37;
+        --bad: #cf222e;
+        --accent: #0969da;
+        --add: #dafbe1;
+        --del: #ffebe9;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d1117;
+          --fg: #e6edf3;
+          --muted: #8b949e;
+          --line: #30363d;
+          --card: #161b22;
+          --ok: #3fb950;
+          --bad: #f85149;
+          --accent: #58a6ff;
+          --add: #12261e;
+          --del: #2d1517;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          14px/1.5 system-ui,
+          sans-serif;
+      }
+      header {
+        padding: 16px 24px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0;
+      }
+      main {
+        padding: 24px;
+        max-width: 1100px;
+        margin: 0 auto;
+        display: grid;
+        gap: 24px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .err {
+        color: var(--bad);
+      }
+      #summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        gap: 12px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+      }
+      .card .k {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .card .v {
+        font-size: 20px;
+        font-weight: 600;
+      }
+      .chart {
+        width: 100%;
+        height: auto;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+      .chart .axis {
+        stroke: var(--line);
+      }
+      .chart text {
+        fill: var(--muted);
+        font-size: 11px;
+      }
+      .chart .edge {
+        stroke: var(--muted);
+        stroke-width: 1;
+        opacity: 0.6;
+      }
+      .chart .pt {
+        fill: var(--accent);
+        cursor: pointer;
+      }
+      .chart .pt.best {
+        fill: var(--ok);
+      }
+      .chart .pt.sel {
+        stroke: var(--fg);
+        stroke-width: 2;
+      }
+      .tablewrap {
+        overflow-x: auto;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 6px 10px;
+        border-bottom: 1px solid var(--line);
+        white-space: nowrap;
+      }
+      tbody tr {
+        cursor: pointer;
+      }
+      tbody tr:hover,
+      tbody tr.sel {
+        background: var(--card);
+      }
+      .badge {
+        padding: 1px 8px;
+        border-radius: 10px;
+        font-size: 12px;
+        border: 1px solid var(--line);
+      }
+      .badge.valid {
+        color: var(--ok);
+      }
+      .badge.invalid {
+        color: var(--bad);
+      }
+      pre {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        overflow-x: auto;
+        margin: 8px 0;
+      }
+      pre .add {
+        background: var(--add);
+        display: inline-block;
+        width: 100%;
+      }
+      pre .del {
+        background: var(--del);
+        display: inline-block;
+        width: 100%;
+      }
+      h2 {
+        font-size: 15px;
+        margin: 0 0 8px;
+      }
+      input[type="file"] {
+        font: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Singularis Lineage Viewer</h1>
+      <input
+        id="file"
+        type="file"
+        accept=".json,application/json"
+        aria-label="Load report.json"
+      />
+      <span id="status" class="muted"
+        >Load a report.json written by <code>singularis report</code>, or drop
+        it on this page.</span
+      >
+    </header>
+    <main id="app" hidden>
+      <section><div id="summary"></div></section>
+      <section>
+        <h2>Fitness by generation</h2>
+        <div id="chart"></div>
+      </section>
+      <section>
+        <h2>Archive</h2>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Agent</th>
+                <th>Parent</th>
+                <th>Gen</th>
+                <th>Status</th>
+                <th>Train</th>
+                <th>Fitness</th>
+                <th>Held-out</th>
+                <th>Delta</th>
+                <th>Focus</th>
+                <th>Prompt</th>
+                <th>Mean tokens</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+      <section>
+        <h2>Meta prompt variants</h2>
+        <div id="meta"></div>
+      </section>
+      <section id="detail"></section>
+    </main>
+    <script>
+      (function () {
+        "use strict";
+        const state = { report: null, selected: null };
+        const $ = (id) => document.getElementById(id);
+        const SVG_NS = "http://www.w3.org/2000/svg";
+
+        function el(tag, props, ...children) {
+          const node = document.createElement(tag);
+          for (const [key, value] of Object.entries(props || {})) {
+            if (key === "class") node.className = value;
+            else node.setAttribute(key, value);
+          }
+          for (const child of children)
+            node.append(
+              child instanceof Node
+                ? child
+                : document.createTextNode(String(child)),
+            );
+          return node;
+        }
+
+        function svg(tag, attrs) {
+          const node = document.createElementNS(SVG_NS, tag);
+          for (const [key, value] of Object.entries(attrs || {}))
+            node.setAttribute(key, String(value));
+          return node;
+        }
+
+        const fmt = (v) =>
+          v === null || v === undefined ? "-" : Number(v).toFixed(3);
+        const fmtDelta = (v) =>
+          v === null || v === undefined
+            ? "-"
+            : (v >= 0 ? "+" : "") + Number(v).toFixed(3);
+        const byId = () => new Map(state.report.agents.map((a) => [a.id, a]));
+
+        function setStatus(message, isError) {
+          const node = $("status");
+          node.textContent = message;
+          node.className = isError ? "err" : "muted";
+        }
+
+        function select(id) {
+          state.selected = id;
+          render();
+        }
+
+        function renderSummary() {
+          const agents = state.report.agents;
+          const valid = agents.filter((a) => a.status === "valid");
+          const best = valid.find((a) => a.id === state.report.best);
+          const cards = [
+            ["Agents", agents.length],
+            ["Valid", valid.length],
+            ["Invalid", agents.length - valid.length],
+            ["Best agent", best ? best.id : "-"],
+            ["Best fitness", best ? fmt(best.fitness) : "-"],
+            ["Best held-out", best ? fmt(best.heldout_score) : "-"],
+          ];
+          const usage = state.report.usage || {};
+          if (usage.iterations !== undefined) {
+            cards.push(
+              ["Iterations", usage.iterations],
+              ["Meta tokens", usage.meta_tokens],
+              ["Eval tokens", usage.eval_tokens],
+            );
+          }
+          $("summary").replaceChildren(
+            ...cards.map(([k, v]) =>
+              el(
+                "div",
+                { class: "card" },
+                el("div", { class: "k" }, k),
+                el("div", { class: "v" }, v),
+              ),
+            ),
+          );
+        }
+
+        function renderChart() {
+          const agents = state.report.agents.filter(
+            (a) =>
+              a.status === "valid" &&
+              a.fitness !== null &&
+              a.fitness !== undefined,
+          );
+          if (agents.length === 0) {
+            $("chart").replaceChildren(
+              el("p", { class: "muted" }, "No evaluated agents yet."),
+            );
+            return;
+          }
+          const W = 720,
+            H = 260,
+            P = 44;
+          const maxGen = Math.max(1, ...agents.map((a) => a.generation));
+          let lo = Math.min(...agents.map((a) => a.fitness));
+          let hi = Math.max(...agents.map((a) => a.fitness));
+          if (hi - lo < 0.05) {
+            lo -= 0.05;
+            hi += 0.05;
+          }
+          const x = (g) => P + (g / maxGen) * (W - 2 * P);
+          const y = (f) => H - P - ((f - lo) / (hi - lo)) * (H - 2 * P);
+          const root = svg("svg", {
+            viewBox: "0 0 " + W + " " + H,
+            class: "chart",
+            role: "img",
+            "aria-label": "Fitness by generation",
+          });
+
+          root.append(
+            svg("line", {
+              x1: P,
+              y1: H - P,
+              x2: W - P,
+              y2: H - P,
+              class: "axis",
+            }),
+          );
+          root.append(
+            svg("line", { x1: P, y1: P, x2: P, y2: H - P, class: "axis" }),
+          );
+          for (let g = 0; g <= maxGen; g++) {
+            const label = svg("text", {
+              x: x(g),
+              y: H - P + 16,
+              "text-anchor": "middle",
+            });
+            label.textContent = String(g);
+            root.append(label);
+          }
+          for (const value of [lo, hi]) {
+            const label = svg("text", {
+              x: P - 6,
+              y: y(value) + 4,
+              "text-anchor": "end",
+            });
+            label.textContent = value.toFixed(2);
+            root.append(label);
+          }
+          const axisTitle = svg("text", {
+            x: W / 2,
+            y: H - 6,
+            "text-anchor": "middle",
+          });
+          axisTitle.textContent = "generation";
+          root.append(axisTitle);
+
+          const index = byId();
+          for (const a of agents) {
+            const parent = index.get(a.parent_id);
+            if (
+              parent &&
+              parent.fitness !== null &&
+              parent.fitness !== undefined
+            ) {
+              root.append(
+                svg("line", {
+                  x1: x(parent.generation),
+                  y1: y(parent.fitness),
+                  x2: x(a.generation),
+                  y2: y(a.fitness),
+                  class: "edge",
+                }),
+              );
+            }
+          }
+          for (const a of agents) {
+            const cls =
+              "pt" +
+              (a.id === state.report.best ? " best" : "") +
+              (a.id === state.selected ? " sel" : "");
+            const point = svg("circle", {
+              cx: x(a.generation),
+              cy: y(a.fitness),
+              r: a.id === state.selected ? 7 : 5,
+              class: cls,
+            });
+            const tip = svg("title", {});
+            tip.textContent =
+              a.id +
+              "  fitness " +
+              fmt(a.fitness) +
+              "  held-out " +
+              fmt(a.heldout_score);
+            point.append(tip);
+            point.addEventListener("click", () => select(a.id));
+            root.append(point);
+          }
+          $("chart").replaceChildren(root);
+        }
+
+        function renderTable() {
+          const rows = state.report.agents.map((a) => {
+            const row = el(
+              "tr",
+              { class: a.id === state.selected ? "sel" : "" },
+              el(
+                "td",
+                { style: "padding-left:" + (10 + a.generation * 14) + "px" },
+                a.id,
+              ),
+              el("td", {}, a.parent_id || "-"),
+              el("td", {}, a.generation),
+              el(
+                "td",
+                {},
+                el("span", { class: "badge " + a.status }, a.status),
+              ),
+              el("td", {}, fmt(a.train_score)),
+              el("td", {}, fmt(a.fitness)),
+              el("td", {}, fmt(a.heldout_score)),
+              el("td", {}, fmtDelta(a.delta)),
+              el("td", {}, a.focus || "-"),
+              el("td", {}, a.meta_variant || "-"),
+              el(
+                "td",
+                {},
+                a.train_tokens === null || a.train_tokens === undefined
+                  ? "-"
+                  : Math.round(a.train_tokens),
+              ),
+              el("td", { class: "muted" }, (a.note || "").slice(0, 80)),
+            );
+            row.addEventListener("click", () => select(a.id));
+            return row;
+          });
+          $("rows").replaceChildren(...rows);
+        }
+
+        function resultsTable(title, results) {
+          if (!results || results.length === 0) return null;
+          const head = el(
+            "tr",
+            {},
+            ...[
+              "Task",
+              "Trial",
+              "Score",
+              "Tests",
+              "Tokens",
+              "Stop",
+              "Integrity",
+            ].map((h) => el("th", {}, h)),
+          );
+          const body = results.map((r) =>
+            el(
+              "tr",
+              {},
+              el("td", {}, r.task_id),
+              el("td", {}, r.trial || 0),
+              el("td", {}, fmt(r.score)),
+              el("td", {}, r.passed + "/" + r.total),
+              el("td", {}, r.input_tokens + r.output_tokens),
+              el("td", {}, r.stop_reason),
+              el(
+                "td",
+                { class: (r.integrity_flags || []).length ? "err" : "muted" },
+                (r.integrity_flags || []).length
+                  ? r.integrity_flags.join("; ")
+                  : "clean",
+              ),
+            ),
+          );
+          return el(
+            "div",
+            {},
+            el("h2", {}, title),
+            el(
+              "div",
+              { class: "tablewrap" },
+              el("table", {}, el("thead", {}, head), el("tbody", {}, ...body)),
+            ),
+          );
+        }
+
+        function renderMeta() {
+          const variants = Object.entries(state.report.meta_prompts || {});
+          if (variants.length === 0) {
+            $("meta").replaceChildren(
+              el("p", { class: "muted" }, "No meta prompt statistics."),
+            );
+            return;
+          }
+          const head = el(
+            "tr",
+            {},
+            ...["Variant", "Uses", "Mean fitness change"].map((h) =>
+              el("th", {}, h),
+            ),
+          );
+          const body = variants.map(([id, v]) => {
+            const deltas = v.deltas || [];
+            const mean = deltas.length
+              ? deltas.reduce((x, y) => x + y, 0) / deltas.length
+              : null;
+            return el(
+              "tr",
+              {},
+              el("td", {}, id),
+              el("td", {}, v.uses),
+              el("td", {}, fmtDelta(mean)),
+            );
+          });
+          $("meta").replaceChildren(
+            el(
+              "div",
+              { class: "tablewrap" },
+              el("table", {}, el("thead", {}, head), el("tbody", {}, ...body)),
+            ),
+          );
+        }
+
+        function renderDetail() {
+          const a = byId().get(state.selected);
+          const box = $("detail");
+          if (!a) {
+            box.replaceChildren(
+              el("p", { class: "muted" }, "Select an agent."),
+            );
+            return;
+          }
+          const parts = [
+            el(
+              "h2",
+              {},
+              "Agent " +
+                a.id +
+                (a.parent_id ? " (child of " + a.parent_id + ")" : " (seed)"),
+            ),
+            el("p", { class: "muted" }, a.note || "No note recorded."),
+          ];
+          for (const table of [
+            resultsTable("Train results", a.train_results),
+            resultsTable("Held-out results", a.heldout_results),
+          ]) {
+            if (table) parts.push(table);
+          }
+          if (a.diff) {
+            parts.push(el("h2", {}, "Change relative to parent"));
+            const lines = a.diff.split("\n").map((line) => {
+              const isAdd = line.startsWith("+") && !line.startsWith("+++");
+              const isDel = line.startsWith("-") && !line.startsWith("---");
+              return el(
+                "span",
+                { class: isAdd ? "add" : isDel ? "del" : "" },
+                line + "\n",
+              );
+            });
+            parts.push(el("pre", {}, ...lines));
+          }
+          box.replaceChildren(...parts);
+        }
+
+        function render() {
+          $("app").hidden = false;
+          renderSummary();
+          renderChart();
+          renderTable();
+          renderMeta();
+          renderDetail();
+        }
+
+        function load(text, keepSelection) {
+          try {
+            const report = JSON.parse(text);
+            if (!report || !Array.isArray(report.agents))
+              throw new Error("not a Singularis report");
+            const previous = state.selected;
+            state.report = report;
+            const stillThere =
+              keepSelection && report.agents.some((a) => a.id === previous);
+            state.selected = stillThere
+              ? previous
+              : report.best || (report.agents[0] ? report.agents[0].id : null);
+            render();
+            setStatus("Loaded " + report.agents.length + " agents.", false);
+            return true;
+          } catch (error) {
+            setStatus("Could not load report: " + error.message, true);
+            return false;
+          }
+        }
+
+        function readFile(file) {
+          const reader = new FileReader();
+          reader.onload = () => load(String(reader.result));
+          reader.onerror = () => setStatus("Could not read file.", true);
+          reader.readAsText(file);
+        }
+
+        $("file").addEventListener("change", (event) => {
+          if (event.target.files[0]) readFile(event.target.files[0]);
+        });
+        document.addEventListener("dragover", (event) =>
+          event.preventDefault(),
+        );
+        document.addEventListener("drop", (event) => {
+          event.preventDefault();
+          if (event.dataTransfer && event.dataTransfer.files[0])
+            readFile(event.dataTransfer.files[0]);
+        });
+
+        window.singularisLoadReport = load;
+
+        if (location.protocol === "http:" || location.protocol === "https:") {
+          const params = new URLSearchParams(location.search);
+          const path = params.get("report") || "report.json";
+          const refreshMs = Math.max(
+            200,
+            Number(params.get("refresh")) || 5000,
+          );
+          let live = false;
+
+          const refresh = (keep) => {
+            if (keep && document.hidden) return Promise.resolve();
+            return fetch(path, { cache: "no-store" })
+              .then((r) =>
+                r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status)),
+              )
+              .then((text) => {
+                if (load(text, keep)) {
+                  live = true;
+                  setStatus(
+                    "Live: updated " + new Date().toLocaleTimeString() + ".",
+                    false,
+                  );
+                }
+              })
+              .catch((error) => {
+                if (live)
+                  setStatus(
+                    "Live updates paused (" + error.message + "). Retrying.",
+                    true,
+                  );
+              });
+          };
+
+          refresh(false).then(() => {
+            if (live) setInterval(() => refresh(true), refreshMs);
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>

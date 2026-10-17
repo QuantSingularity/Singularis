@@ -1,0 +1,165 @@
+{
+  "generated_at": 1792209225.355253,
+  "best": "a0000",
+  "usage": {
+    "meta_tokens": 240,
+    "eval_tokens": 180,
+    "iterations": 2
+  },
+  "meta_prompts": {
+    "m0": {
+      "uses": 1,
+      "deltas": [0.0]
+    },
+    "m1": {
+      "uses": 1,
+      "deltas": [0.0]
+    }
+  },
+  "manifest": {
+    "singularis_version": "0.1.0",
+    "python": "3.12.3",
+    "created_at": 1792209223.5803301,
+    "frozen_code_sha256": "5533481b1f62a01d14546abf656da4b0893669e9870967498a56afdbdafdcf1e"
+  },
+  "agents": [
+    {
+      "id": "a0000",
+      "parent_id": null,
+      "generation": 0,
+      "status": "valid",
+      "note": "seed genome",
+      "train_score": 1.0,
+      "train_tokens": 30.0,
+      "fitness": 0.99999625,
+      "heldout_score": 1.0,
+      "focus": null,
+      "meta_variant": null,
+      "delta": null,
+      "created_at": 1792209223.5815952,
+      "diff": "",
+      "train_results": [
+        {
+          "task_id": "fizzbuzz",
+          "score": 1.0,
+          "passed": 5,
+          "total": 5,
+          "input_tokens": 20,
+          "output_tokens": 10,
+          "wall_s": 0.007,
+          "stop_reason": "finished",
+          "error": "",
+          "trial": 0,
+          "integrity_flags": []
+        }
+      ],
+      "heldout_results": [
+        {
+          "task_id": "fizzbuzz_heldout",
+          "score": 1.0,
+          "passed": 5,
+          "total": 5,
+          "input_tokens": 20,
+          "output_tokens": 10,
+          "wall_s": 0.007,
+          "stop_reason": "finished",
+          "error": "",
+          "trial": 0,
+          "integrity_flags": []
+        }
+      ]
+    },
+    {
+      "id": "a0001",
+      "parent_id": "a0000",
+      "generation": 1,
+      "status": "valid",
+      "note": "tightened the prompts",
+      "train_score": 1.0,
+      "train_tokens": 30.0,
+      "fitness": 0.99999625,
+      "heldout_score": 1.0,
+      "focus": "tools",
+      "meta_variant": "m0",
+      "delta": 0.0,
+      "created_at": 1792209224.1861339,
+      "diff": "--- parent/prompts.py\n+++ child/prompts.py\n@@ -1,16 +1 @@\n-SYSTEM_PROMPT = \"\"\"You are an autonomous software engineer working inside a sandboxed project directory.\n-\n-Tools: list_files, read_file, search_text, write_file, edit_file, run_python, finish.\n-\n-Workflow:\n-1. Explore first: list the files and read anything relevant before editing.\n-2. Read the task requirements carefully, including edge cases and error behavior.\n-3. Implement the change with write_file (new files) or edit_file (small changes). Keep the existing public names and signatures.\n-4. Verify by running code with run_python. Write your own small checks for edge cases and run them.\n-5. When the work is complete and verified, call finish with a one or two sentence summary.\n-\n-Rules:\n-- Only touch files inside the project directory.\n-- Be economical: do not re-read files you already know, and do not repeat failing commands unchanged.\n-- If a command fails, read the error, fix the cause, and re-run.\n-\"\"\"\n+SYSTEM_PROMPT = \"You are a careful engineer. Verify every change by running code, then call finish.\"\n",
+      "train_results": [
+        {
+          "task_id": "fizzbuzz",
+          "score": 1.0,
+          "passed": 5,
+          "total": 5,
+          "input_tokens": 20,
+          "output_tokens": 10,
+          "wall_s": 0.007,
+          "stop_reason": "finished",
+          "error": "",
+          "trial": 0,
+          "integrity_flags": []
+        }
+      ],
+      "heldout_results": [
+        {
+          "task_id": "fizzbuzz_heldout",
+          "score": 1.0,
+          "passed": 5,
+          "total": 5,
+          "input_tokens": 20,
+          "output_tokens": 10,
+          "wall_s": 0.006,
+          "stop_reason": "finished",
+          "error": "",
+          "trial": 0,
+          "integrity_flags": []
+        }
+      ]
+    },
+    {
+      "id": "a0002",
+      "parent_id": "a0001",
+      "generation": 2,
+      "status": "valid",
+      "note": "tightened the prompts",
+      "train_score": 1.0,
+      "train_tokens": 30.0,
+      "fitness": 0.99999625,
+      "heldout_score": 1.0,
+      "focus": "loop",
+      "meta_variant": "m1",
+      "delta": 0.0,
+      "created_at": 1792209224.9173682,
+      "diff": "",
+      "train_results": [
+        {
+          "task_id": "fizzbuzz",
+          "score": 1.0,
+          "passed": 5,
+          "total": 5,
+          "input_tokens": 20,
+          "output_tokens": 10,
+          "wall_s": 0.006,
+          "stop_reason": "finished",
+          "error": "",
+          "trial": 0,
+          "integrity_flags": []
+        }
+      ],
+      "heldout_results": [
+        {
+          "task_id": "fizzbuzz_heldout",
+          "score": 1.0,
+          "passed": 5,
+          "total": 5,
+          "input_tokens": 20,
+          "output_tokens": 10,
+          "wall_s": 0.006,
+          "stop_reason": "finished",
+          "error": "",
+          "trial": 0,
+          "integrity_flags": []
+        }
+      ]
+    }
+  ]
+}
