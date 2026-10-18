@@ -2,41 +2,45 @@
 
 ## Trust boundaries
 
-| Zone    | Contents                                                 | Who may change it                             |
-| ------- | -------------------------------------------------------- | --------------------------------------------- |
-| Frozen  | `code/backend/**`, `code/ai_models/llm.py`, hidden tests | Humans only                                   |
-| Mutable | `code/ai_models/genome/`                                 | The agent, through the self-modification loop |
+| Zone    | Contents                                                                                             | Who may change it                             |
+| ------- | ---------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| Frozen  | `code/backend/**`, `code/ai_models/llm.py`, hidden tests, meta prompt validation, selection, budgets | Humans only                                   |
+| Mutable | `code/ai_models/genome/`                                                                             | The agent, through the self-modification loop |
+| Data    | `runs/<experiment>/**`                                                                               | The loop writes it; humans read it            |
 
-The genome is the only code the agent is ever allowed to change. A candidate is copied into a scratch
-workspace as `./genome`, edited there, and only that directory is read back.
+The agent can only change a copy of the genome. The copy is placed in a scratch workspace as `./genome`, edited there,
+and only that directory is read back.
 
 ## Modules
 
-| Module                                                                           | Role                                                                                                                 |
-| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `ai_models/llm.py`                                                               | `LLMClient` protocol, `AnthropicClient`, `ScriptedClient`, `BudgetedClient`                                          |
-| `ai_models/genome/`                                                              | Seed agent: `prompts.py`, `tools.py`, `agent.py` with `solve()`                                                      |
-| `backend/core/sandbox.py`                                                        | Subprocess runner with rlimits, scrubbed env, workspace path confinement                                             |
-| `backend/core/worker.py`                                                         | Process entry point that loads a genome and runs `solve()` under a budget                                            |
-| `backend/core/loader.py`                                                         | Load a genome by path, check the interface contract                                                                  |
-| `backend/core/trace.py`                                                          | `RunTrace`, `Step`, `ToolRecord`                                                                                     |
-| `backend/core/logging_config.py`                                                 | Console and file logging (`code/logs`)                                                                               |
-| `backend/core/isolation.py`                                                      | `isolation-check`: proxy policy, tool egress, secrets, container hardening checks                                    |
-| `backend/evaluation/evaluator.py`                                                | Hidden test execution and benchmark validation (function and repository tasks)                                       |
-| `backend/evaluation/repo_eval.py`                                                | Repository evaluation: reset test files, apply the test patch, run pytest, score FAIL_TO_PASS with a regression rule |
-| `backend/evaluation/swebench.py`                                                 | SWE-bench dataset to task directories (checkout without git history, deterministic splits)                           |
-| `backend/evaluation/tasks.py`, `suite.py`, `suite_finance.py`, `suite_issues.py` | `Task`, directory loader, general, finance and multi-file issue tasks                                                |
-| `backend/evaluation/runner.py`                                                   | Run one task or a suite (with trials), integrity enforcement, fitness function                                       |
-| `backend/evaluation/integrity.py`                                                | AST scan for evaluator tampering in agent-written code                                                               |
-| `backend/evaluation/stats.py`                                                    | Bootstrap confidence intervals and paired comparisons                                                                |
-| `backend/evolution/archive.py`                                                   | SQLite lineage tree, `open_ended` and `greedy` parent selection                                                      |
-| `backend/evolution/evolve.py`                                                    | Propose, validate, evaluate, select; failure clustering; usage accounting                                            |
-| `backend/evolution/meta.py`                                                      | Versioned meta prompt templates with a UCB bandit                                                                    |
-| `backend/evolution/experiment.py`                                                | Seed vs arms protocol, final trials on held-out and fresh splits                                                     |
-| `backend/evolution/signing.py`                                                   | HMAC records binding code, scores, and result files                                                                  |
-| `backend/evolution/manifest.py`                                                  | Reproducibility manifest and change detection on resume                                                              |
-| `backend/evolution/report.py`, `serve.py`                                        | Archive export and the live localhost server                                                                         |
-| `backend/cli.py`                                                                 | `singularis` command                                                                                                 |
+| Module                                                               | Role                                                                                                     |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `ai_models/llm.py`                                                   | `LLMClient` protocol, `AnthropicClient`, `ScriptedClient`, `BudgetedClient`                              |
+| `ai_models/genome/agent.py`                                          | `solve()`: the tool-use loop with context compaction                                                     |
+| `ai_models/genome/tools.py`                                          | Seven tools: `list_files`, `read_file`, `search_text`, `write_file`, `edit_file`, `run_python`, `finish` |
+| `ai_models/genome/prompts.py`                                        | System prompt                                                                                            |
+| `backend/core/sandbox.py`                                            | Subprocess runner with rlimits, scrubbed environment, workspace path confinement                         |
+| `backend/core/worker.py`                                             | Process entry point: load a genome, apply the budget, run `solve()`, write the trace                     |
+| `backend/core/loader.py`                                             | Load a genome by path, check the interface contract                                                      |
+| `backend/core/trace.py`                                              | `RunTrace`, `Step`, `ToolRecord`                                                                         |
+| `backend/core/isolation.py`                                          | Checks behind `singularis isolation-check`                                                               |
+| `backend/core/logging_config.py`                                     | Console and file logging                                                                                 |
+| `backend/evaluation/evaluator.py`                                    | Hidden test execution for function tasks, suite validation                                               |
+| `backend/evaluation/repo_eval.py`                                    | Repository evaluation: reset tests, apply patch, run pytest, score                                       |
+| `backend/evaluation/swebench.py`                                     | SWE-bench dataset to task directories                                                                    |
+| `backend/evaluation/tasks.py`                                        | `Task` model, directory loader, split selection                                                          |
+| `backend/evaluation/suite.py`, `suite_finance.py`, `suite_issues.py` | The 20 built-in tasks                                                                                    |
+| `backend/evaluation/runner.py`                                       | Run a task or suite with trials, integrity enforcement, fitness function                                 |
+| `backend/evaluation/integrity.py`                                    | AST scan for evaluator tampering                                                                         |
+| `backend/evaluation/stats.py`                                        | Bootstrap intervals and paired comparison                                                                |
+| `backend/evolution/archive.py`                                       | SQLite lineage tree, parent selection strategies                                                         |
+| `backend/evolution/evolve.py`                                        | The loop: diagnose, modify, validate, evaluate, record                                                   |
+| `backend/evolution/meta.py`                                          | Meta prompt variants and the UCB bandit                                                                  |
+| `backend/evolution/experiment.py`                                    | Seed versus arms protocol and report generation                                                          |
+| `backend/evolution/signing.py`                                       | HMAC records                                                                                             |
+| `backend/evolution/manifest.py`                                      | Reproducibility manifest and change detection                                                            |
+| `backend/evolution/report.py`, `serve.py`                            | Archive export and the localhost server                                                                  |
+| `backend/cli.py`                                                     | The `singularis` command                                                                                 |
 
 ## Genome contract
 
@@ -44,80 +48,133 @@ workspace as `./genome`, edited there, and only that directory is read back.
 def solve(task: str, workspace: Path, llm: LLMClient, sandbox: SandboxConfig, max_steps: int = 30) -> RunTrace
 ```
 
-- Exported from `genome/__init__.py`.
-- May import `ai_models.llm`, `backend.core.sandbox`, `backend.core.text`, `backend.core.trace`, plus the
-  standard library. Internal imports must be relative.
-- Allowed file types inside the genome: `.py`, `.md`, `.txt`, `.json`. At most 30 files and 200 KB. No symlinks.
+| Rule      | Detail                                                                                                                                   |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Export    | `genome/__init__.py` exports `solve`                                                                                                     |
+| Signature | The first four parameters are named `task`, `workspace`, `llm`, `sandbox`, and `max_steps` is accepted                                   |
+| Imports   | `ai_models.llm`, `backend.core.sandbox`, `backend.core.text`, `backend.core.trace`, standard library; relative imports inside the genome |
+| Files     | `.py`, `.md`, `.txt`, `.json` only; at most 30 files and 200 KB; no symlinks                                                             |
+| Return    | A `RunTrace`; anything else is recorded as a `genome_error`                                                                              |
 
-`loader.check_contract` enforces the signature (first four parameter names and a `max_steps` parameter).
+## Running one task
 
-## One task run
+| Step | Action                                                                                                | Module                         |
+| ---- | ----------------------------------------------------------------------------------------------------- | ------------------------------ |
+| 1    | Create a fresh workspace: starter files, or a copy of the repository checkout without `.git`          | `runner.py`                    |
+| 2    | Start `python -m backend.core.worker` under rlimits and a wall clock timeout                          | `runner.py`                    |
+| 3    | The worker loads the genome, wraps the model in a budget, calls `solve()`, writes a JSON trace        | `worker.py`                    |
+| 4    | Crash, timeout or bad return becomes a trace with `genome_error`, `timeout` or `worker_failure`       | `runner.py`                    |
+| 5    | Copy the workspace, add hidden tests, run them, parse the result (nonce protected for function tasks) | `evaluator.py`, `repo_eval.py` |
+| 6    | Scan agent-written code for tampering; in strict mode a flag zeroes the score                         | `integrity.py`                 |
+| 7    | Return a `TaskResult` with score, tokens, stop reason, flags                                          | `runner.py`                    |
 
-1. `runner.run_task` writes starter files into a fresh workspace.
-2. `runner.run_agent` starts `python -m backend.core.worker` under rlimits and a wall-clock timeout. The
-   worker loads the genome by path, wraps the LLM client in a `BudgetedClient`, and calls `solve`.
-3. The worker writes a JSON `RunTrace`. A crash, timeout, or malformed return becomes a trace with
-   `stop_reason` set to `genome_error`, `timeout`, or `worker_failure`.
-4. `evaluator.evaluate` copies the workspace, adds the hidden tests and a runner script, and executes them.
-   The result is passed back with a per-run random nonce. Score is `passed / total`.
+Stop reasons: `finished`, `no_tool_calls`, `max_steps`, `budget`, `llm_error`, `genome_error`, `timeout`, `worker_failure`.
+
+## Scoring
+
+| Task kind                                       | Score                                                                                           |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Function and issue tasks                        | Passing hidden tests divided by total hidden tests                                              |
+| Repository tasks                                | FAIL_TO_PASS tests fixed divided by FAIL_TO_PASS total, or 0 if any PASS_TO_PASS test now fails |
+| Any task in `strict` integrity mode with a flag | 0                                                                                               |
+| Fitness (used for selection)                    | `mean_score - 0.05 * min(1, mean_tokens / token_cap)`                                           |
 
 ## One evolution step
 
-1. `Archive.select_parent` samples a valid agent with weight `sigmoid(10 * (fitness - midpoint)) / (1 + children)`.
-2. A scratch workspace is created containing a copy of the parent genome at `./genome`.
-3. The **parent genome** runs the meta prompt against that workspace. The digest in the prompt lists the
-   parent's lowest scoring training tasks with their last tool calls and errors.
-4. The candidate passes `check_genome_files`, then `validate_genome` (compile every file, import, contract).
-   Failures are archived as `invalid` with the reason.
-5. Valid candidates get a unified diff, are evaluated on train, and are evaluated on held-out only when
-   `fitness >= parent.fitness`. Each evaluation is followed by a signed record.
-6. The child's fitness change (or a fixed penalty for an invalid child) is recorded as the reward of the meta
-   prompt variant that produced it.
+| Step | Action                                                                                               |
+| ---- | ---------------------------------------------------------------------------------------------------- |
+| 1    | Select a parent (`open_ended` or `greedy`)                                                           |
+| 2    | Choose a meta prompt variant by UCB and a focus area by rotation                                     |
+| 3    | Copy the parent genome into a scratch workspace and build the prompt with the failure digest         |
+| 4    | Run the parent genome on that workspace as an agent                                                  |
+| 5    | Check the candidate: file policy, then compile, import and contract in a subprocess                  |
+| 6    | If invalid: archive as `invalid`, reward the variant -0.05, stop                                     |
+| 7    | If valid: store it, write the diff, evaluate on train, compute the fitness change against the parent |
+| 8    | Evaluate on held-out only if the change is zero or positive; sign the record                         |
+| 9    | Record the change as the meta prompt variant's reward                                                |
+| 10   | Every N iterations, run the meta level                                                               |
 
-Parent selection is `open_ended` or `greedy` (`Archive.select_parent`). The focus of each step rotates through
-`FOCI` by archive size. Failing results are clustered by `failure_class` and the digest leads with the clusters.
+| Mutation focus       | Instruction given to the agent                     |
+| -------------------- | -------------------------------------------------- |
+| `prompts`            | Improve the system prompt                          |
+| `tools`              | Add or improve a tool                              |
+| `loop`               | Improve control flow in the main loop              |
+| `context_management` | Keep the conversation compact and relevant         |
+| `efficiency`         | Reach the same results with fewer steps and tokens |
+| `error_recovery`     | Detect failures earlier and recover reliably       |
+
+| Failure class                                 | Meaning                                         |
+| --------------------------------------------- | ----------------------------------------------- |
+| `wrong_answer`                                | Finished normally, score 0                      |
+| `partial_credit`                              | Finished normally, some but not all tests pass  |
+| `budget`, `timeout`, `max_steps`              | A limit was hit                                 |
+| `llm_error`, `genome_error`, `worker_failure` | The model call, the genome or the worker failed |
+| `no_tool_calls`                               | The model stopped without finishing             |
+| `integrity_violation`                         | The tamper scan flagged the solution            |
+
+### Parent selection
+
+| Strategy     | Rule                                                                                                                                 |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `open_ended` | Sample with weight `sigmoid(10 * (fitness - midpoint)) / (1 + children)`, where midpoint is between the mean and the maximum fitness |
+| `greedy`     | Always the fittest valid agent (the hill-climbing control)                                                                           |
 
 ## Meta level
 
-Every N iterations (`--meta-evolve-every`) the best agent edits `meta_prompt.md` in a scratch workspace, using
-`META_META_PROMPT`. `meta.validate_template` accepts the result only if it keeps the placeholders `{parent}`,
-`{digest}`, `{focus}`, formats cleanly, and stays under 6000 characters. Accepted variants are tried once
-immediately, then compete through UCB1 on the mean fitness change of the children they produced. The templates
-live in `runs/<exp>/meta_prompts/`, outside the genome, so the agent cannot rewrite its own objective, the
-evaluator, selection, or budgets.
+| Aspect          | Detail                                                                                                                |
+| --------------- | --------------------------------------------------------------------------------------------------------------------- |
+| What is evolved | The instruction template used to ask an agent to modify itself                                                        |
+| Who proposes    | The best agent, editing `meta_prompt.md` in a scratch workspace                                                       |
+| Validation      | Keeps `{parent}`, `{digest}`, `{focus}`; formats cleanly; at most 6000 characters; not a duplicate                    |
+| Selection       | UCB1 on the mean fitness change of the children each variant produced (exploration 0.1); new variants are tried first |
+| Penalty         | An invalid child counts as -0.05 for its variant                                                                      |
+| Storage         | `runs/<exp>/meta_prompts/m0.md`, `m1.md`, ... and `stats.json`, outside the genome                                    |
+| Not evolvable   | Evaluation, selection of agents, budgets, sandbox, the validator itself                                               |
 
 ## Experiment protocol
 
-`run_experiment` evaluates the unmodified seed genome (control) on the held-out and fresh splits with repeated
-trials. For each arm it runs a full evolution in its own directory, takes the best agent by train fitness, and
-evaluates it the same way. Per task means feed `paired_bootstrap`, which resamples tasks to produce a
-confidence interval for the difference from the seed. Output: `experiment.json` and `EXPERIMENT.md`.
+| Stage            | Action                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| Control          | Evaluate the unmodified seed on held-out and fresh tasks with repeated trials         |
+| Arms             | For each arm, run a full evolution in its own directory                               |
+| Best agent       | Highest train fitness in the arm                                                      |
+| Final evaluation | The same repeated trials on held-out and fresh tasks                                  |
+| Comparison       | Paired bootstrap over tasks of the per-task mean difference from the seed             |
+| Output           | `experiment.json` and `EXPERIMENT.md` with confidence intervals and an honest reading |
 
-## Archive layout
+## Archive and run directory
 
-```
-runs/exp/
-  archive.db                     SQLite: id, parent, generation, status, scores, note
-  report.json                    written by `singularis report`, read by the frontend
-  manifest.json                  configuration, versions, frozen code hash, task fingerprints
-  usage.json                     meta and evaluation token totals, iteration count
-  meta_prompts/                  meta prompt variants (m0.md, m1.md, ...) and stats.json
-  signing.key                    HMAC key unless SINGULARIS_SIGNING_KEY is set
-  agents/a0003/
-    genome/                      the exact code that was evaluated
-    diff.patch                   change relative to the parent
-    signature.json               HMAC record for this agent
-    results_train.json           per task scores, token use, integrity flags
-    results_heldout.json
-    train/traces/*.trace.json    full tool call traces
-  meta/a0003/meta.trace.json     the self-modification run that produced a0003
-  work/a0003/                    scratch workspace
-```
+| Path under `runs/<experiment>/`                          | Content                                                                      |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `archive.db`                                             | SQLite table of agents (see below)                                           |
+| `manifest.json`                                          | Configuration, versions, frozen code hash, task fingerprints, change history |
+| `usage.json`                                             | Meta tokens, evaluation tokens, iteration count                              |
+| `signing.key`                                            | HMAC key (unless `SINGULARIS_SIGNING_KEY` is set)                            |
+| `report.json`                                            | Written by `singularis report`, read by the dashboard                        |
+| `meta_prompts/`                                          | Meta prompt variants and `stats.json`                                        |
+| `agents/<id>/genome/`                                    | The exact code that was evaluated                                            |
+| `agents/<id>/diff.patch`                                 | Change relative to the parent                                                |
+| `agents/<id>/results_train.json`, `results_heldout.json` | Per-task scores, tokens, flags                                               |
+| `agents/<id>/train/traces/*.trace.json`                  | Full tool call traces                                                        |
+| `agents/<id>/signature.json`                             | HMAC record for this agent                                                   |
+| `meta/<id>/`                                             | The self-modification run that produced the agent                            |
+| `work/<id>/`                                             | Scratch workspace                                                            |
 
-## Extending
+| Archive column                           | Meaning                                                                |
+| ---------------------------------------- | ---------------------------------------------------------------------- |
+| `id`, `parent_id`, `generation`          | Lineage (`a0000` is the seed)                                          |
+| `status`                                 | `valid` or `invalid`                                                   |
+| `note`                                   | The agent's own description of its change, or the rejection reason     |
+| `train_score`, `train_tokens`, `fitness` | Train split results                                                    |
+| `heldout_score`                          | Held-out result, only for promising children                           |
+| `focus`, `meta_variant`, `delta`         | Mutation focus, meta prompt variant, fitness change against the parent |
 
-- **New provider**: implement `LLMClient.complete` and register it in `make_llm`.
-- **New benchmark**: use the task directory format, or build `Task` objects directly.
-- **Different mutation targets**: change `META_PROMPT` in `backend/evolution/evolve.py` to focus the search,
-  for example on tools only or on memory only. Keep this outside the genome so the agent cannot rewrite its
-  own objective.
+## Extension points
+
+| To add               | Do this                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------- |
+| A model provider     | Implement `LLMClient.complete` in `ai_models/` and register it in `make_llm`                            |
+| Benchmark tasks      | Task directories (`--tasks-dir`), `Task` objects in a suite module, or SWE-bench data                   |
+| A mutable surface    | Add modules inside `ai_models/genome/`, then update `META_PROMPT` so the agent knows it may change them |
+| A focus area         | Add it to `FOCI` and `FOCUS_TEXT` in `evolution/evolve.py`                                              |
+| A selection strategy | Add it to `SELECTIONS` and `Archive.select_parent`                                                      |

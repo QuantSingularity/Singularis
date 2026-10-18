@@ -2,192 +2,204 @@
 
 A research framework for **recursive self-improvement of coding agents**. An agent evaluates itself on a
 benchmark, diagnoses its own failures, rewrites its own source code, and keeps the rewrite only if a frozen
-evaluator says it got better. The improved agent then performs the next round of self-modification.
+evaluator says it got better. The improved agent then runs the next round of self-modification.
 
-The foundation model stays fixed. What evolves is the agent around it: its prompts, tools, loop logic, and
-memory strategy (called the **genome**). This follows the line of work behind the Darwin Godel Machine, STOP,
-Voyager, and AlphaEvolve, with the engineering needed to run it reproducibly and safely.
+The foundation model stays fixed. What evolves is the agent around it, called the **genome**: its prompts, tools,
+and control loop. The design follows the line of work behind the Darwin Godel Machine, STOP, Voyager and
+AlphaEvolve, with the engineering needed to run it reproducibly, measure it honestly, and contain it.
 
-## Repository layout
+## At a glance
 
-```
-singularis/
-  LICENSE
-  README.md
-  pytest.ini
-  pyproject.toml
-  code/
-    README.md
-    conftest.py              shared pytest fixtures
-    testkit.py               shared test helpers (scripted models, ready-made evolver)
-    logs/                    runtime logs (singularis.log)
-    ai_models/               everything that talks to or is a model
-      llm.py                   provider interface, Anthropic client, scripted client, budgets
-      genome/                  the mutable agent: prompts.py, tools.py, agent.py
-      tests/
-    backend/                 the frozen engine
-      core/                    sandbox, worker, loader, trace, text, logging
-      evaluation/              frozen evaluator, 20 benchmark tasks, SWE-bench adapter, runner, stats, integrity
-      evolution/               archive, self-modification loop, meta prompts, experiment protocol,
-                               signed records, manifest, report export, live server
-      cli.py                   the `singularis` command
-      tests/
-  docs/                      architecture, safety, roadmap
-  frontend/                  static lineage viewer (open index.html, load report.json)
-  infrastructure/            Dockerfile, compose stack with egress allowlist proxy
-  scripts/                   setup, tests, baseline, evolution, docker, report helpers
-```
+| Item               | Detail                                                                                               |
+| ------------------ | ---------------------------------------------------------------------------------------------------- |
+| Language           | Python 3.10 or newer, standard library only at runtime (the `anthropic` package is optional)         |
+| What evolves       | `code/ai_models/genome/`: system prompt, seven tools, agent loop                                     |
+| What never changes | Evaluator, hidden tests, budgets, sandbox, selection, archive (the frozen engine in `code/backend/`) |
+| Default model      | `claude-sonnet-5-5` through the Anthropic API, or a scripted model for tests                         |
+| Benchmark          | 20 built-in tasks in 3 tracks, 11 train, 5 held-out, 4 fresh, plus SWE-bench style repository tasks  |
+| Search             | Open-ended archive or greedy hill climbing, rotating mutation focus, failure clustering              |
+| Meta level         | Optional evolvable instruction template, chosen by a bandit                                          |
+| Measurement        | Repeated trials, bootstrap confidence intervals, paired comparison against the seed                  |
+| Integrity          | Static tamper scan, signed records, reproducibility manifest                                         |
+| Containment        | Process sandbox by default, network-isolated container stack available                               |
+| Tests              | 136 automated tests, none need an API key                                                            |
+| Size               | About 5,500 lines of Python excluding tests (about 3,100 of them are benchmark task data)            |
+
+## Status
+
+This repository ships infrastructure and verified tooling. It does not ship results.
+
+| Capability                                | Status                           | Evidence                                                                                    |
+| ----------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------- |
+| Self-improvement loop, archive, selection | Implemented and tested           | End-to-end tests with scripted models                                                       |
+| Meta prompt evolution                     | Implemented and tested           | Bandit, validation and step tests                                                           |
+| Benchmark (20 tasks)                      | Verified                         | Starters fail, references pass, each fix is individually required                           |
+| Statistics and experiment protocol        | Implemented and tested           | Bootstrap, paired comparison and report tests                                               |
+| Integrity scan and signed records         | Implemented and tested           | Tamper cases detected; this is tamper evidence, not prevention                              |
+| SWE-bench adapter                         | Verified on a synthetic instance | Real git repository in SWE-bench format; real SWE-bench data not tried                      |
+| Container stack                           | Partly verified                  | Compose and Dockerfile validated, proxy tested against a real squid; image never built here |
+| Live dashboard refresh                    | Verified in a simulated browser  | Real server plus jsdom; a real Chromium script is provided but was not run                  |
+| Runs against a live model                 | Not done                         | Cost, validity rate and any improvement are unmeasured                                      |
 
 ## How the loop works
 
 ```
-            frozen (agent cannot touch)                    mutable
-  +----------------------------------------------+   +-----------------+
-  | evaluator + hidden tests | budgets | sandbox |   |  ai_models/     |
-  | archive | selection | validation | worker    |   |    genome/      |
-  +----------------------------------------------+   +--------+--------+
+      frozen (the agent cannot touch)                      mutable
+ +---------------------------------------------+      +-----------------+
+ | evaluator, hidden tests | budgets | sandbox |      |  ai_models/     |
+ | archive | selection | validation | worker   |      |    genome/      |
+ +---------------------------------------------+      +--------+--------+
                       |                                        |
-                      v                                        v
-   select parent --> meta task: "improve ./genome" --> candidate child genome
-        ^             (run by the PARENT genome itself)          |
-        |                                                        v
-        +--- archive child <--- evaluate on train/heldout <--- validate
+ select parent --> meta task "improve ./genome" --> candidate child genome
+      ^             (run by the PARENT genome)                |
+      |                                                       v
+      +--- archive child <--- evaluate train / held-out <--- validate
 ```
 
-1. **Select** a parent from the archive: `open_ended` (fitness weighted, with a bonus for under-explored
-   branches) or `greedy` (always the fittest, used as a control arm).
-2. **Diagnose**: the parent's failing traces are clustered into failure classes (wrong answer, budget, timeout,
-   integrity violation, and so on) and summarized into a digest.
-3. **Modify**: the parent genome runs a meta task whose workspace is a copy of its own source. The task names a
-   rotating focus (prompts, tools, loop, context management, efficiency, error recovery) and uses the currently
-   selected meta prompt variant.
-4. **Validate**: file policy, compile check, import check, interface contract check, in a subprocess.
-5. **Evaluate**: train split first, with an integrity scan of everything the agent wrote. Only candidates that
-   match or beat the parent are evaluated on the held-out split.
-6. **Record**: every valid child is kept with its diff, scores, lineage, and a signed record binding its exact
-   code to its results. The child's fitness change is the reward for the meta prompt variant that produced it.
-7. **Meta level** (optional, `--meta-evolve-every N`): the best agent proposes a new meta prompt variant, which
-   enters a UCB bandit with the others. The process of self-improvement is itself subject to selection, while
-   evaluation, selection of agents, budgets, and the sandbox stay frozen.
+| Step          | What happens                                                                                                  | Where                             |
+| ------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| 1. Select     | Pick a parent: `open_ended` (fitness weighted, bonus for rarely extended branches) or `greedy` (fittest only) | `evolution/archive.py`            |
+| 2. Diagnose   | Cluster the parent's failures by class and build a digest with traces and errors                              | `evolution/evolve.py`             |
+| 3. Modify     | The parent genome edits a copy of its own source, guided by a focus area and a meta prompt variant            | `evolution/evolve.py`             |
+| 4. Validate   | File policy, compile, import and interface contract checks in a subprocess                                    | `evolution/evolve.py`             |
+| 5. Evaluate   | Train split with an integrity scan; held-out split only if the child is at least as fit as its parent         | `evaluation/runner.py`            |
+| 6. Record     | Keep the child with diff, scores and lineage; sign the record; reward the meta prompt variant                 | `evolution/signing.py`, `meta.py` |
+| 7. Meta level | Optionally let the best agent propose a new meta prompt variant (`--meta-evolve-every N`)                     | `evolution/meta.py`               |
+
+## Repository layout
+
+| Path                                  | Purpose                                                                                         |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `code/ai_models/`                     | Model side: `llm.py` (providers, budgets) and `genome/` (the evolving agent)                    |
+| `code/backend/core/`                  | Sandbox, worker, loader, trace, logging, isolation checks                                       |
+| `code/backend/evaluation/`            | Evaluator, task suites, repository tasks, SWE-bench adapter, runner, statistics, integrity scan |
+| `code/backend/evolution/`             | Archive, evolution loop, meta prompts, experiments, signing, manifest, report, live server      |
+| `code/backend/cli.py`                 | The `singularis` command                                                                        |
+| `code/testkit.py`, `code/conftest.py` | Shared test helpers and fixtures                                                                |
+| `code/logs/`                          | Runtime logs (`singularis.log`)                                                                 |
+| `docs/`                               | Architecture, CLI, benchmarks, safety, testing, roadmap                                         |
+| `frontend/`                           | Single-file lineage dashboard, its tests, and sample data                                       |
+| `infrastructure/`                     | Dockerfile, compose stack, egress proxy config, smoke fixture                                   |
+| `scripts/`                            | Helper scripts for setup, runs, experiments, Docker and report generation                       |
+| `pytest.ini`, `pyproject.toml`        | Test and packaging configuration                                                                |
 
 ## Quickstart
 
 ```bash
-scripts/setup.sh                        # venv + editable install (anthropic client and pytest)
+scripts/setup.sh                        # virtual environment and editable install
 source .venv/bin/activate
-export ANTHROPIC_API_KEY=...
+export ANTHROPIC_API_KEY=...            # not needed for tests or scripted runs
 
-scripts/run_tests.sh                    # 136 tests, no API key needed
-scripts/run_baseline.sh                 # validate benchmark, score the seed genome on both splits
+scripts/run_tests.sh                    # 136 tests
+scripts/run_baseline.sh                 # validate the benchmark, score the seed genome
 scripts/run_evolution.sh runs/exp1 5    # 5 self-improvement iterations, then write the report
-scripts/run_experiment.sh runs/exp 5 3  # arms vs the seed, 3 trials per task, with confidence intervals
 scripts/serve.sh runs/exp1              # live dashboard at http://127.0.0.1:8765/
+scripts/run_experiment.sh runs/exp 5 3  # arms versus the seed, 3 trials per task
 ```
 
-Or call the CLI directly:
+| Script                             | Purpose                                                             |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| `scripts/setup.sh`                 | Create `.venv` and install with the Anthropic client and pytest     |
+| `scripts/run_tests.sh`             | Run the test suite (arguments pass through to pytest)               |
+| `scripts/run_baseline.sh`          | Validate the suite, then score the seed on train and held-out       |
+| `scripts/run_evolution.sh`         | Run the evolution loop, then write `report.json`                    |
+| `scripts/run_experiment.sh`        | Run the seed versus arms experiment, then verify signed records     |
+| `scripts/serve.sh`                 | Start the live dashboard on localhost                               |
+| `scripts/make_report.sh`           | Write `report.json` for an experiment                               |
+| `scripts/make_sample_report.py`    | Regenerate the dashboard sample data from a scripted run            |
+| `scripts/prepare_swebench.sh`      | Convert a SWE-bench dataset file into validated task directories    |
+| `scripts/docker_run.sh`            | Run any command inside the isolated container stack                 |
+| `scripts/verify_docker.sh`         | Build the stack and verify its guarantees from inside the container |
+| `scripts/test_frontend_browser.sh` | Check the dashboard in real Chromium through Playwright             |
 
-```bash
-singularis validate-suite               # every task: starter fails, reference solution passes
-singularis eval --split train
-singularis evolve --root runs/exp1 --iterations 5
-singularis lineage --root runs/exp1
-singularis report --root runs/exp1      # writes runs/exp1/report.json for the viewer
-singularis serve --root runs/exp1       # live dashboard, localhost only
-singularis verify --root runs/exp1      # check signed records against genomes, scores, result files
-singularis export --root runs/exp1 --agent a0003 --dest my_agent   # shows the diff, asks to confirm
+## Command line
 
-singularis evolve --root runs/exp1 --selection greedy --meta-evolve-every 3
-singularis eval --split fresh --trials 5
-singularis experiment --root runs/exp --iterations 5 --trials 3 --arms open_ended,greedy
-singularis isolation-check              # inside the container: proxy allowlist, no tool egress, hardening
-scripts/prepare_swebench.sh data/verified.jsonl tasks/swebench /path/to/env/bin/python --limit 10
-```
+Every command is documented with all options in [docs/CLI.md](docs/CLI.md).
 
-Open `frontend/index.html` in a browser and load `runs/exp1/report.json`, or run `singularis serve` for a
-dashboard that refreshes every few seconds while an experiment runs. It shows the lineage chart, archive
-table with focus, prompt variant and fitness change per agent, meta prompt statistics, token usage, per task
-results with integrity flags, and diffs. `frontend/sample/report.json` is sample data from a scripted run.
+| Command                       | Purpose                                                                |
+| ----------------------------- | ---------------------------------------------------------------------- |
+| `singularis suite`            | List tasks                                                             |
+| `singularis validate-suite`   | Check that every task fails at the start and passes with its reference |
+| `singularis eval`             | Score a genome on a split, with repeated trials                        |
+| `singularis evolve`           | Run the self-improvement loop (resumable)                              |
+| `singularis experiment`       | Compare evolution arms with the seed, with confidence intervals        |
+| `singularis lineage`          | Print the archive as a table                                           |
+| `singularis report`           | Write `report.json` for the dashboard                                  |
+| `singularis serve`            | Live dashboard on localhost                                            |
+| `singularis verify`           | Check signed records against genomes, scores and result files          |
+| `singularis export`           | Show an evolved genome's diff and copy it out after confirmation       |
+| `singularis isolation-check`  | Verify the container stack from inside it                              |
+| `singularis swebench prepare` | Turn a SWE-bench dataset file into repository tasks                    |
 
-Models are selected with `--llm anthropic:<model>` (default `anthropic:claude-sonnet-5-5`). Use
-`--meta-llm` to run self-modification with a different model than evaluation. `scripted:<path.json>` replays a
-fixed script and is what the test suite uses.
+## Benchmark
 
-Run it inside the network-isolated container stack (see `docs/SAFETY.md`):
+| Track      | Tasks | What it tests                                                                                                         | Source            |
+| ---------- | ----- | --------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `general`  | 7     | Classic programming specs: parsing, caching, scheduling, intervals                                                    | Built in          |
+| `finance`  | 8     | Drawdown, Sharpe, EWMA volatility, VaR and CVaR, backtests, price cleaning, minimum variance, z-scores, Black-Scholes | Built in          |
+| `issues`   | 5     | Multi-file bug reports where every one of several fixes is required                                                   | Built in          |
+| `swebench` | any   | Real repositories at a base commit with hidden FAIL_TO_PASS and PASS_TO_PASS tests                                    | Your dataset file |
 
-```bash
-scripts/docker_run.sh evolve --root runs/exp1 --iterations 5
-```
+| Split     | Built-in tasks | Role                                                      |
+| --------- | -------------- | --------------------------------------------------------- |
+| `train`   | 11             | Used for selection during search                          |
+| `heldout` | 5              | Reported for promising children, never used for selection |
+| `fresh`   | 4              | Untouched until the final experiment comparison           |
 
-## Bring your own benchmark
+Details, task tables and instructions for running real SWE-bench data are in
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
-The builtin suite has 20 tasks in three tracks: 7 general programming tasks, 8 finance tasks (drawdown and
-Sharpe, EWMA volatility, historical VaR and CVaR, SMA crossover backtest with costs and no lookahead, CSV price
-cleaning, minimum variance weights, rolling z-scores, Black-Scholes), and 5 multi-file **issue tasks** modeled on
-real bug reports (invoice rounding, ledger replay, TTL cache, rate limiter, migrations) where every one of several
-fixes is required. Splits: 11 train, 5 held-out, 4 fresh. The `fresh` split is never touched during search and
-is used only by `experiment` for final scores. Every task is checked by `validate-suite`.
+## Design decisions
 
-For results that mean something, add **SWE-bench style repository tasks**: `singularis swebench prepare` turns a
-dataset file into real-repository tasks (checkout without git history, hidden test patch, FAIL_TO_PASS and
-PASS_TO_PASS scoring, test files reset before grading). See `docs/BENCHMARKS.md` for setup, what is verified, and
-the limits. You can also create a directory per task:
+| Decision                   | Why                                               | Enforced by                                                                |
+| -------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------- |
+| Frozen evaluator           | The agent must not be able to edit what judges it | Hidden tests are written after the agent finishes, into a separate copy    |
+| Three splits               | Selection overfits the train split                | Held-out is never selected on; fresh is evaluated only in final comparison |
+| Budgets outside the genome | The agent must not raise its own limits           | Token and call limits wrap the model client; wall clock kill backs them up |
+| Open-ended archive         | A temporary regression can unlock a later gain    | Every valid child is kept; parent choice favors rarely extended branches   |
+| Cost-aware fitness         | Efficiency should be able to evolve               | `fitness = mean_score - 0.05 * min(1, mean_tokens / token_cap)`            |
+| Statistics over anecdotes  | One lucky run proves nothing                      | Repeated trials, bootstrap intervals, paired comparison against the seed   |
+| Tamper scan                | Reward hacking is the main failure mode           | AST scan of agent-written code, strict by default                          |
+| Signed records             | Results must not change silently                  | HMAC over genome hash, scores and result files                             |
+| Human gate                 | Evolved code is unreviewed code                   | Nothing leaves the archive without `export` and a confirmation             |
 
-```
-mytasks/
-  parse_logs/
-    task.json          {"prompt": "...", "split": "train" | "heldout" | "fresh", "track": "finance"}
-    files/             starter files copied into the agent workspace
-    hidden_tests.py    unittest module, run after the agent finishes
-```
+## Safety summary
 
-Pass `--tasks-dir mytasks` to `eval` or `evolve`. Reference solutions exist only for builtin tasks, so validate
-your own tasks by hand.
+| Layer             | Protects against                                                         | Strength                                      |
+| ----------------- | ------------------------------------------------------------------------ | --------------------------------------------- |
+| Process sandbox   | Runaway CPU, memory, file size, output; path escapes; leaked environment | Basic. Not a security boundary                |
+| Genome validation | A child that breaks the interface, adds odd files, or fails to import    | Strong for what it checks                     |
+| Integrity scan    | Casual evaluator tampering                                               | Heuristic. Obfuscated code can evade it       |
+| Signed records    | After-the-fact edits to stored results                                   | Tamper evidence only                          |
+| Container stack   | Network access and host damage from agent code                           | Strong if verified on your machine; see below |
 
-## Design decisions that matter
+Read [docs/SAFETY.md](docs/SAFETY.md) before running experiments with a real API key.
 
-- **Frozen evaluator.** Hidden tests live outside the genome and are written only after the agent finishes,
-  into a separate copy of the workspace. The genome cannot read or edit them.
-- **Held-out and fresh splits.** Selection pressure on the train split inevitably overfits. The held-out score is
-  reported but never used for selection, and the fresh split is not evaluated at all until the final comparison.
-- **Statistics, not anecdotes.** `experiment` evaluates the seed and the best agent of each arm with repeated
-  trials, reports bootstrap confidence intervals, and compares arms to the seed with a paired bootstrap over
-  tasks. The generated `EXPERIMENT.md` says plainly when a difference is not distinguishable from zero.
-- **Integrity scan.** Agent-written code is scanned for evaluator tampering (exit hooks, process and signal
-  tricks, dynamic code, patching unittest, references to the hidden tests). In `strict` mode (default) a flagged
-  solution scores zero and the digest tells the next generation why.
-- **Signed records.** Each evaluated agent gets an HMAC over its exact code hash, scores, and result files.
-  `singularis verify` detects edits made after the fact.
-- **Reproducibility.** `manifest.json` records configuration, versions, a hash of the frozen engine, and
-  fingerprints of the tasks, and warns on resume if any of them changed.
-- **Budgets the agent cannot raise.** Token and call budgets are enforced by the harness around the LLM
-  client, with a wall-clock kill as the backstop.
-- **Open-ended archive.** All valid children are kept, so a temporary regression that unlocks a later gain is
-  not discarded.
-- **Cost-aware fitness.** `fitness = mean_score - 0.05 * (mean_tokens / token_cap)`. Correctness dominates,
-  but efficiency can evolve.
-- **Human in the loop.** The loop writes only inside its archive directory. `export` shows the diff and asks
-  before copying a genome out.
+## Limitations
 
-## Limitations (read before running experiments)
+| Limitation                                                       | Consequence                                                                                         |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| No live-model run has happened                                   | Cost per iteration, how often children pass validation, and whether fitness improves are unmeasured |
+| Process-level isolation is not a security boundary               | Use the container stack or a VM for real experiments                                                |
+| Evaluator and candidate code share an interpreter                | A hostile solution could try to forge a result; the scan and signatures detect only some attempts   |
+| Container stack was not built in the authoring environment       | Run `scripts/verify_docker.sh` once on a machine with Docker                                        |
+| SWE-bench support is pytest only and needs your own environments | Start with a few instances from one pure Python repository                                          |
+| Built-in tasks can saturate with a strong model                  | Use the issue tasks and SWE-bench style tasks for meaningful comparisons                            |
+| Self-modification covers prompts, tools and loop logic           | Weight updates are out of scope                                                                     |
 
-- Without the container stack, isolation is process level (rlimits, scrubbed environment, path confinement).
-  It is **not** a security boundary against a determined adversary. See `docs/SAFETY.md`.
-- The evaluator shares an interpreter with the code under test, so a malicious solution could in principle
-  forge a result. The integrity scan and signed records reduce and expose this; they do not eliminate it.
-- Nothing here has been run against a live model. All tests use scripted models, so real-world behavior of the
-  loop (cost, how often children pass validation, whether fitness improves) is unmeasured.
-- Self-modification targets prompts, tools, and loop logic. Weight updates are out of scope.
-- The container stack could not be built where this repository was authored (no Docker daemon). Its compose file, Dockerfile
-  and proxy policy were validated with the official tools and a real squid, and `scripts/verify_docker.sh` proves the
-  rest on your machine. See `docs/SAFETY.md`.
-- No result in this repository is evidence of improvement. It ships infrastructure, not claims.
+## Documentation
 
-## Docs
-
-- `docs/ARCHITECTURE.md`: module contracts and data flow
-- `docs/SAFETY.md`: threat model and hardening checklist
-- `docs/BENCHMARKS.md`: task tracks, issue tasks, running SWE-bench style data
-- `docs/ROADMAP.md`: what is implemented and what remains for publishable results
+| Document                                             | Contents                                                        |
+| ---------------------------------------------------- | --------------------------------------------------------------- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | Trust boundaries, modules, contracts, data flow, archive layout |
+| [docs/CLI.md](docs/CLI.md)                           | Every command and option with defaults                          |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md)             | Task tracks, all 20 tasks, SWE-bench workflow, limits           |
+| [docs/SAFETY.md](docs/SAFETY.md)                     | Threat model, controls, container stack, verification status    |
+| [docs/TESTING.md](docs/TESTING.md)                   | What the 136 tests cover and how to run them                    |
+| [docs/ROADMAP.md](docs/ROADMAP.md)                   | What is implemented and what remains                            |
+| [code/README.md](code/README.md)                     | Source layout and import rules                                  |
+| [frontend/README.md](frontend/README.md)             | The dashboard and its tests                                     |
+| [infrastructure/README.md](infrastructure/README.md) | The container stack files                                       |
 
 ## License
 

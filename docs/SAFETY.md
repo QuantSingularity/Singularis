@@ -1,100 +1,128 @@
 # Safety and threat model
 
-Self-modifying agents run code that no human has reviewed. Treat every candidate genome and every task
-workspace as untrusted.
+A self-modifying agent runs code that no human has reviewed. Treat every candidate genome and every task workspace
+as untrusted. This document states what is protected, how, and how well that has been verified.
 
-## What the framework does
+## Threat model
 
-- Runs each genome in a separate worker process with memory, CPU, and file size rlimits and a wall-clock kill
-  of the whole process group.
-- Scrubs the environment: the worker receives only `PATH`, `HOME`, `PYTHONPATH`, and, for Anthropic runs,
-  the API key and proxy variables. Tools the agent calls run with an even smaller environment and **no** API key.
-- Confines file tools to the workspace (resolved paths, symlink escapes rejected).
-- Enforces token and call budgets outside the genome and caps tool output size.
-- Validates candidate genomes (file types, size, no symlinks, compile, import, contract) before any evaluation.
-- Writes only inside the archive directory. Promotion to anywhere else is a manual `export` after reading the diff.
-- Keeps hidden tests outside the agent workspace and writes them only after the agent finishes.
-- Scans agent-written code for evaluator tampering (`backend/evaluation/integrity.py`): suspicious imports
-  (`atexit`, `ctypes`, `subprocess`, `socket`, and similar), `os._exit` and `os.kill`, module-level exits,
-  `eval`, `exec` and `__import__`, patching `unittest`, and references to the hidden tests. In `strict` mode a
-  flagged solution scores zero. The scan is heuristic and can produce false positives; use `--integrity warn`
-  to record flags without penalizing.
-- Signs every evaluated agent (`signing.py`): an HMAC over the code hash, scores, and result files. Use
-  `singularis verify` to detect edits made after the fact. Set `SINGULARIS_SIGNING_KEY` to keep the key out of the
-  archive directory; it is never passed to workers.
-- Binds the meta prompt to a frozen validator: variants must keep the required placeholders and cannot change
-  evaluation, selection, or budgets, which live outside the mutable surfaces.
-- The live server (`singularis serve`) exposes only `/`, `/report.json` and `/healthz`, binds to loopback, and
-  refuses other addresses without `--allow-remote`. The frontend renders report content as text only, so
-  agent-written notes and diffs cannot inject markup.
+| Threat                                           | Mitigation                                                                                                 | Residual risk                                                                 |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Agent code exhausts CPU, memory, disk or output  | rlimits, wall clock kill of the process group, output clipping                                             | Limits are per process; a container adds a hard cap                           |
+| Agent writes outside its workspace               | Resolved path checks in file tools, symlink escapes rejected                                               | `run_python` code can write anywhere the OS user can                          |
+| Agent steals the API key                         | Key goes only to the worker; tool subprocesses get a scrubbed environment                                  | The genome runs in the worker process, which holds the key; use a capped key  |
+| Agent calls out to the network                   | Container stack: internal network plus an allowlist proxy                                                  | Process-only mode has no network control                                      |
+| Agent edits or reads the hidden tests            | Tests are written after the agent finishes, into a separate copy; repository tests are reset to base first | Same-interpreter evaluator can be attacked by obfuscated code                 |
+| Agent forges a result                            | Per-run nonce, static tamper scan, signed records                                                          | A determined adversary can evade the scan; see below                          |
+| Agent raises its own budget                      | Budgets wrap the model client outside the genome; the worker is killed on timeout                          | The genome shares a process with the wrapper                                  |
+| Agent breaks the interface or ships odd files    | File policy, compile, import and contract validation before any evaluation                                 | None known for what is checked                                                |
+| Meta prompt drifts toward dangerous instructions | Validator requires placeholders, formats, length cap; evaluation and budgets are outside its reach         | The template can still say unwise things inside those limits; review variants |
+| Stored results change after the fact             | Signed records and `verify`                                                                                | Same-user processes that can read the key can re-sign                         |
+| Dashboard injects markup from agent text         | Everything rendered with `textContent`                                                                     | None known                                                                    |
+| Dashboard exposed to the network                 | Loopback only unless `--allow-remote`; three fixed routes                                                  | Remote mode shows diffs and notes to anyone who can reach it                  |
+
+## Controls in the framework
+
+| Control              | Where                     | Behavior                                                                            |
+| -------------------- | ------------------------- | ----------------------------------------------------------------------------------- |
+| rlimits and timeouts | `core/sandbox.py`         | Address space, CPU seconds and file size per process; process group kill on timeout |
+| Scrubbed environment | `core/sandbox.py`         | Only `PATH`, `HOME`, `LANG`, Python flags and explicit values reach a subprocess    |
+| Path confinement     | `core/sandbox.py`         | `resolve_in_workspace` rejects escapes and symlink tricks                           |
+| Budgets              | `ai_models/llm.py`        | Token and call limits around the model client                                       |
+| Genome validation    | `evolution/evolve.py`     | Types, size, no symlinks, compile, import and signature checks in a subprocess      |
+| Integrity scan       | `evaluation/integrity.py` | AST rules below; strict mode scores 0                                               |
+| Signed records       | `evolution/signing.py`    | HMAC over code hash, scores and result files                                        |
+| Manifest             | `evolution/manifest.py`   | Warns on resume if the engine or tasks changed                                      |
+| Human gate           | `cli.py export`           | Shows the diff and asks before copying a genome out                                 |
+| Localhost server     | `evolution/serve.py`      | Loopback only, three routes, no directory listing                                   |
+
+### Integrity scan rules
+
+| Rule                 | Flags                                                                                                      |
+| -------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Suspicious imports   | `atexit`, `ctypes`, `gc`, `socket`, `subprocess`, `multiprocessing`, `signal`, `builtins`, `importlib`     |
+| Process tricks       | `os._exit`, `os.kill`, `os.system`, `os.popen`, `sys._getframe`, module-level `sys.exit`, `exit` or `quit` |
+| Dynamic code         | `eval`, `exec`, `__import__`                                                                               |
+| Evaluator references | String constants mentioning `hidden_tests` or `_runner`                                                    |
+| Patching             | Assigning into `unittest` or `builtins`                                                                    |
+
+| Mode               | Behavior                                                        |
+| ------------------ | --------------------------------------------------------------- |
+| `strict` (default) | A flagged solution scores 0 and the next generation is told why |
+| `warn`             | Flags are recorded, the score is kept                           |
+| `off`              | No scan                                                         |
+
+Repository tasks use a relaxed scan (changed files only, no import or dynamic code rules).
 
 ## What process-level isolation does not do
 
-- **No network isolation.** Subprocess limits cannot block sockets.
-- **No filesystem isolation.** A script run through `run_python` can read any file the OS user can read.
-- **Evaluator integrity is best effort.** Candidate code and the test runner share an interpreter. A nonce
-  makes casual forgery hard, but code that reads `sys.argv` could forge a result. The integrity scan catches the
-  obvious attempts, not obfuscated ones. Held-out and fresh tasks, trace review, and spot checks of high scoring
-  agents are the practical defenses.
-- **Signed records are tamper evidence, not tamper prevention.** They show that stored results changed after
-  signing. A process running as the same OS user that can read the key file (or the parent's environment) could
-  re-sign. Keep the key outside the sandbox and run the container stack to remove that path.
-- **API key exposure to the genome.** The genome runs in a process that holds the key. Use a key with a hard
-  spend limit and a dedicated workspace.
+| Gap                                                 | Consequence                                                                                                         |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| No network isolation                                | Subprocess limits cannot block sockets                                                                              |
+| No filesystem isolation                             | Agent code can read anything the OS user can read                                                                   |
+| Evaluator shares an interpreter with candidate code | Obfuscated code could try to forge a result; held-out and fresh tasks, trace review and spot checks are the defense |
+| Signed records are tamper evidence, not prevention  | A process that can read the key (file or environment) can re-sign; keep the key outside the sandbox                 |
+| The genome sees the API key                         | It runs in the worker process; use a dedicated key with a spend cap                                                 |
 
-## The container stack (`infrastructure/`)
+## The container stack
 
-`docker-compose.yml` closes the network and filesystem gaps:
+| Control                   | Mechanism                                                                                    |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| No route to the internet  | Compose network `sandbox` with `internal: true`                                              |
+| One exit                  | Squid proxy on both networks, allowing `CONNECT api.anthropic.com:443` only                  |
+| Tools get no proxy or key | The worker receives proxy variables and the key; tool subprocesses do not                    |
+| Read-only root filesystem | `read_only: true`, `tmpfs` for `/tmp`, only `runs/` writable                                 |
+| No privileges             | `cap_drop: [ALL]`, `no-new-privileges:true`, non-root user mapped from your host uid and gid |
+| Resource caps             | `pids_limit: 256`, `mem_limit: 8g`, `cpus: 4`                                                |
 
-- The agent container is on an `internal: true` network with no route to the internet.
-- The only exit is a Squid proxy (`squid.conf`) that allows HTTPS CONNECT to `api.anthropic.com:443` only.
-- The worker gets the proxy variables. Tool subprocesses do not, so code the agent executes has no network.
-- Read-only root filesystem, `/tmp` as tmpfs, all capabilities dropped, `no-new-privileges`, 256 process cap,
-  8 GB memory and 4 CPU limits. Only `runs/` is writable and mounted.
+### Verification status
 
-Run it with `scripts/docker_run.sh <singularis command>`.
+| Item                                          | How it was checked                                                                                                            | Result                                                                                 |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Compose file                                  | Official Docker Compose binary, `config`                                                                                      | Valid                                                                                  |
+| Dockerfile                                    | hadolint                                                                                                                      | Clean                                                                                  |
+| Proxy allowlist                               | Real squid with the repo's config                                                                                             | Behaves as designed (table below)                                                      |
+| Proxy start-up                                | Same run                                                                                                                      | Found and fixed a bug: logging to `/dev/stderr` stopped squid from starting            |
+| Non-root, unwritable source                   | Pipeline run as uid 10001 against a root-owned source tree                                                                    | Works; writes only to `runs/` and `/tmp`                                               |
+| `isolation-check` logic                       | Unit tests with fake strict and permissive proxies, open and closed routes, a leaky configuration; run against the real squid | Correct; it reported open internet access in an unrestricted environment, as it should |
+| Host `runs/` permissions                      | Reasoned and fixed with `LOCAL_UID` and `LOCAL_GID` mapping                                                                   | Not run under Docker                                                                   |
+| Building the image                            | Not possible, no Docker daemon in the authoring environment                                                                   | Not verified                                                                           |
+| Containers actually running with these limits | Same                                                                                                                          | Not verified                                                                           |
+| Internal network blocking egress              | Same                                                                                                                          | Not verified                                                                           |
 
-**What has been verified, and what has not.**
+| Proxy probe                                               | Result with the real squid                                           |
+| --------------------------------------------------------- | -------------------------------------------------------------------- |
+| `CONNECT api.anthropic.com:443`                           | Tunnel established (the API answered 404 to a bare GET, as expected) |
+| `CONNECT example.com:443`                                 | 403                                                                  |
+| Plain HTTP request to `example.com`                       | 403                                                                  |
+| `CONNECT api.anthropic.com.attacker.test:443` (lookalike) | 403                                                                  |
+| `CONNECT api.anthropic.com:8443` (wrong port)             | 403                                                                  |
 
-Verified (in the environment where this was authored, which had no Docker daemon):
+Run `scripts/verify_docker.sh` once on a machine with Docker to close the unverified rows. It builds the stack, runs
+`singularis isolation-check` inside the container, validates the suite, and runs a scripted agent under all limits.
 
-- `docker-compose.yml` parses and resolves with the official Docker Compose binary; `Dockerfile` passes hadolint.
-- `squid.conf` was run in a real squid. `api.anthropic.com:443` tunnels; another host, plain HTTP, a lookalike
-  domain (`api.anthropic.com.attacker.test`) and the wrong port (`:8443`) are all refused with 403. This testing
-  found and fixed a real bug: redirecting squid's logs to `/dev/stderr` made the proxy fail to start.
-- The pipeline (eval, evolve, verify) runs as a non-root user against a source tree it cannot write to, writing
-  only to `runs/` and `/tmp`, which is what the read-only container requires.
-- `singularis isolation-check` is unit tested against fake proxies (strict and permissive), open and closed
-  routes, a leaky tool configuration, and run against the real squid. It correctly reported open internet
-  access in the unrestricted environment where it was tried.
-- The compose file maps the container user to your host uid and gid (`LOCAL_UID`, `LOCAL_GID`) so `runs/` is
-  writable; `scripts/docker_run.sh` and `scripts/verify_docker.sh` set them.
+One residual channel: tool code can open a connection to the proxy itself, which allows only the model API host. Tools
+do not receive the API key, so they cannot authenticate, but this is the only route out.
 
-Not verified: building the image, starting the containers, the internal network actually having no route out,
-and the read-only root, dropped capabilities and `no-new-privileges` taking effect under Docker. Run
-`scripts/verify_docker.sh` once on a machine with Docker. It builds the stack, runs `singularis isolation-check`
-inside the container (proxy allowlist, no direct egress from tool code, no secrets in tool environments, read-only
-root, non-root user, no capabilities, `no-new-privileges`, writable `runs/`), validates the suite, and runs a
-scripted agent end to end under those limits.
+## Hardening checklist
 
-One residual channel to know about: tool code can open a connection to the proxy itself, which allows only the
-model API host. Tools do not receive the API key, so this cannot authenticate, but it is the only route out.
-
-## Hardening checklist for real experiments
-
-1. Use the container stack, or an equivalent VM, with no host mounts except the archive directory.
-2. Block cloud metadata endpoints at the host.
-3. Use a dedicated API key with a monthly cap and alerting.
-4. Keep a human approval step before any evolved genome is used outside the sandbox.
-5. Read `diff.patch` for every genome you intend to keep, with particular attention to anything touching
-   process, network, file, or environment APIs.
-6. Re-evaluate promoted genomes on fresh held-out tasks the search never saw.
-7. Retain meta traces (`runs/<exp>/meta/`) so the reasoning behind each modification can be audited.
+| Item                                                          | Why                                                   |
+| ------------------------------------------------------------- | ----------------------------------------------------- |
+| Run experiments in the container stack or a VM                | Real network and filesystem isolation                 |
+| Block cloud metadata endpoints at the host                    | Prevent credential theft through the metadata service |
+| Use a dedicated API key with a spend cap and alerts           | The genome process holds the key                      |
+| Keep `SINGULARIS_SIGNING_KEY` outside the archive             | Stops a same-directory process from re-signing        |
+| Read `diff.patch` for every genome you keep                   | Look for process, network, file or environment APIs   |
+| Re-evaluate promoted genomes on fresh tasks                   | Detect overfitting to the search                      |
+| Keep meta traces (`runs/<exp>/meta/`)                         | Audit why each change was made                        |
+| Review meta prompt variants before trusting them              | They steer self-modification                          |
+| Do not use evolved genomes outside the sandbox without review | They are unreviewed code                              |
 
 ## Failure modes to watch for in results
 
-- **Reward hacking**: the agent learns to pass tests without solving tasks (special-casing, probing the
-  environment). Compare train and held-out gaps and read traces.
-- **Overfitting to the benchmark**: gains on train that vanish on held-out.
-- **Cost drift**: genomes that quietly raise token use. The fitness penalty is small by design, so also track
-  mean tokens in `lineage` or the viewer.
+| Failure mode          | Signal                                                                            |
+| --------------------- | --------------------------------------------------------------------------------- |
+| Reward hacking        | High train score, flags in results, special-casing visible in diffs               |
+| Benchmark overfitting | Train gains that vanish on held-out and fresh                                     |
+| Cost drift            | Mean tokens rising in `lineage` or the dashboard                                  |
+| Invalid child streak  | Many `invalid` rows; the meta prompt or focus may be steering badly               |
+| Noisy comparison      | Confidence interval includes zero; add tasks or trials before concluding anything |

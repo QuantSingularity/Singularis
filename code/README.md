@@ -1,27 +1,43 @@
 # code
 
-Source root. `pytest.ini` and `pyproject.toml` at the repository root put this directory on the import path,
-so the two packages below are imported by name (`ai_models`, `backend`).
+Source root. `pytest.ini` and `pyproject.toml` at the repository root put this directory on the import path, so the
+two packages are imported by name (`ai_models`, `backend`).
 
-| Package     | Zone          | Contents                                                                                                                                                                                                                  |
-| ----------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ai_models` | model side    | `llm.py` (provider interface, Anthropic client, scripted client, budget wrapper) and `genome/` (the agent that evolves)                                                                                                   |
-| `backend`   | frozen engine | `core/` (sandbox, worker, loader, trace, text, logging), `evaluation/` (evaluator, tasks, suites, runner, stats, integrity), `evolution/` (archive, evolve, meta, experiment, signing, manifest, report, serve), `cli.py` |
+## Packages
 
-## Rules of the road
+| Package              | Zone          | Contents                                                                                                             |
+| -------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `ai_models`          | Model side    | `llm.py` (provider interface, Anthropic and scripted clients, budget wrapper) and `genome/` (the agent that evolves) |
+| `backend/core`       | Frozen engine | Sandbox, worker, loader, trace, text helpers, logging, isolation checks                                              |
+| `backend/evaluation` | Frozen engine | Evaluator, task suites, repository evaluation, SWE-bench adapter, runner, statistics, integrity scan                 |
+| `backend/evolution`  | Frozen engine | Archive, evolution loop, meta prompts, experiments, signing, manifest, report, live server                           |
+| `backend/cli.py`     | Frozen engine | The `singularis` command                                                                                             |
 
-- Only `ai_models/genome/` is ever modified by the agent. Everything else is human-maintained.
-- The genome may import `ai_models.llm`, `backend.core.sandbox`, `backend.core.text`, `backend.core.trace`,
-  and the standard library. Inside the genome, use relative imports.
-- `backend` must never import from `ai_models.genome` except to locate the seed genome on disk.
-- Tests live next to what they test (`ai_models/tests`, `backend/tests`). Shared helpers are in `testkit.py`
-  and fixtures in `conftest.py`.
-- `logs/` receives `singularis.log`. Override the location with `SINGULARIS_LOG_DIR`.
+## Other files
+
+| Path                                 | Purpose                                                                     |
+| ------------------------------------ | --------------------------------------------------------------------------- |
+| `testkit.py`                         | Scripted-model helpers, ready-made evolver and task helpers shared by tests |
+| `conftest.py`                        | pytest fixtures (isolated log directory, script writer)                     |
+| `logs/`                              | Runtime logs; override with `SINGULARIS_LOG_DIR`                            |
+| `ai_models/tests/`, `backend/tests/` | Tests next to what they test                                                |
+
+## Rules
+
+| Rule                                                                                                                                | Reason                                                     |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Only `ai_models/genome/` is modified by the agent                                                                                   | Keeps the evaluator, budgets and selection out of reach    |
+| The genome imports only `ai_models.llm`, `backend.core.sandbox`, `backend.core.text`, `backend.core.trace` and the standard library | Keeps the interface contract small and checkable           |
+| Inside the genome, use relative imports                                                                                             | The genome is loaded by path under a generated module name |
+| `backend` never imports from `ai_models.genome` except to locate the seed genome on disk                                            | Prevents the engine depending on mutable code              |
+| Tests live beside the code; shared helpers go in `testkit.py`                                                                       | Keeps fixtures in one place                                |
+| No em dashes or emoji in code, docs or deliverables                                                                                 | Project style                                              |
 
 ## Adding things
 
-- **LLM provider**: implement `LLMClient.complete` in `ai_models/` and register it in `make_llm`.
-- **Benchmark tasks**: see the task directory format in the root README, or add `Task` objects to
-  `backend/evaluation/suite.py`.
-- **A new mutable surface**: add modules inside `ai_models/genome/`, then update `META_PROMPT` in
-  `backend/evolution/evolve.py` so the agent knows it may change them.
+| To add            | Do this                                                                                            |
+| ----------------- | -------------------------------------------------------------------------------------------------- |
+| A model provider  | Implement `LLMClient.complete` in `ai_models/` and register it in `make_llm`                       |
+| Benchmark tasks   | Task directories with `--tasks-dir`, or `Task` objects in a suite module, or SWE-bench data        |
+| A mutable surface | Add modules inside `ai_models/genome/`, then update `META_PROMPT` in `backend/evolution/evolve.py` |
+| A CLI command     | Add `cmd_*` and a parser entry in `backend/cli.py`, document it in `docs/CLI.md`                   |
