@@ -183,10 +183,10 @@ Exit code 1 if any instance fails.
 
 ## Model specifications
 
-| Spec                | Meaning                                                                                             |
-| ------------------- | --------------------------------------------------------------------------------------------------- |
-| `anthropic:<model>` | The Anthropic API with the given model name (needs `ANTHROPIC_API_KEY` and the `anthropic` package) |
-| `scripted:<path>`   | Replay a JSON script of model turns. Used by the tests and the Docker smoke run                     |
+| Spec                | Meaning                                                                                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `anthropic:<model>` | The Anthropic API with the given model name (needs `ANTHROPIC_API_KEY` and the `anthropic` package)                                                         |
+| `scripted:<path>`   | Replay a JSON script of model turns. Used by the tests and the Docker smoke run. A relative path is resolved against the directory you run the command from |
 
 A script is a JSON list of turns:
 

@@ -5,3 +5,4 @@ __pycache__
 .pytest_cache
 code/logs/*.log
 frontend/node_modules
+.ruff_cache

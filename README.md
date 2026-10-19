@@ -22,7 +22,7 @@ AlphaEvolve, with the engineering needed to run it reproducibly, measure it hone
 | Measurement        | Repeated trials, bootstrap confidence intervals, paired comparison against the seed                  |
 | Integrity          | Static tamper scan, signed records, reproducibility manifest                                         |
 | Containment        | Process sandbox by default, network-isolated container stack available                               |
-| Tests              | 136 automated tests, none need an API key                                                            |
+| Tests              | 139 automated tests, none need an API key                                                            |
 | Size               | About 5,500 lines of Python excluding tests (about 3,100 of them are benchmark task data)            |
 
 ## Status
@@ -81,6 +81,7 @@ This repository ships infrastructure and verified tooling. It does not ship resu
 | `frontend/`                           | Single-file lineage dashboard, its tests, and sample data                                       |
 | `infrastructure/`                     | Dockerfile, compose stack, egress proxy config, smoke fixture                                   |
 | `scripts/`                            | Helper scripts for setup, runs, experiments, Docker and report generation                       |
+| `.github/workflows/cicd.yml`          | CI/CD: 14 jobs covering checks, tests, packaging, container verification and releases           |
 | `pytest.ini`, `pyproject.toml`        | Test and packaging configuration                                                                |
 
 ## Quickstart
@@ -90,7 +91,7 @@ scripts/setup.sh                        # virtual environment and editable insta
 source .venv/bin/activate
 export ANTHROPIC_API_KEY=...            # not needed for tests or scripted runs
 
-scripts/run_tests.sh                    # 136 tests
+scripts/run_tests.sh                    # 139 tests
 scripts/run_baseline.sh                 # validate the benchmark, score the seed genome
 scripts/run_evolution.sh runs/exp1 5    # 5 self-improvement iterations, then write the report
 scripts/serve.sh runs/exp1              # live dashboard at http://127.0.0.1:8765/
@@ -149,6 +150,17 @@ Every command is documented with all options in [docs/CLI.md](docs/CLI.md).
 Details, task tables and instructions for running real SWE-bench data are in
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
+## Continuous integration
+
+One workflow, `.github/workflows/cicd.yml`, runs on every push and pull request. Details are in [docs/CICD.md](docs/CICD.md).
+
+| Stage                | Jobs                                                                                                                      | Trigger               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| Checks               | `static`, `test` (Python 3.10 to 3.13), `frontend`, `smoke`, `proxy-policy`, `docker-stack`, `build`, `browser`, `codeql` | Push and pull request |
+| Gate                 | `ci-passed`, the single required check                                                                                    | Push and pull request |
+| Scheduled and manual | `audit`, `live-baseline` (paid, manual)                                                                                   | Weekly, manual        |
+| Delivery             | `release`, `docker-publish`                                                                                               | Tags named `v*`       |
+
 ## Design decisions
 
 | Decision                   | Why                                               | Enforced by                                                                |
@@ -189,17 +201,18 @@ Read [docs/SAFETY.md](docs/SAFETY.md) before running experiments with a real API
 
 ## Documentation
 
-| Document                                             | Contents                                                        |
-| ---------------------------------------------------- | --------------------------------------------------------------- |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | Trust boundaries, modules, contracts, data flow, archive layout |
-| [docs/CLI.md](docs/CLI.md)                           | Every command and option with defaults                          |
-| [docs/BENCHMARKS.md](docs/BENCHMARKS.md)             | Task tracks, all 20 tasks, SWE-bench workflow, limits           |
-| [docs/SAFETY.md](docs/SAFETY.md)                     | Threat model, controls, container stack, verification status    |
-| [docs/TESTING.md](docs/TESTING.md)                   | What the 136 tests cover and how to run them                    |
-| [docs/ROADMAP.md](docs/ROADMAP.md)                   | What is implemented and what remains                            |
-| [code/README.md](code/README.md)                     | Source layout and import rules                                  |
-| [frontend/README.md](frontend/README.md)             | The dashboard and its tests                                     |
-| [infrastructure/README.md](infrastructure/README.md) | The container stack files                                       |
+| Document                                             | Contents                                                                                    |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | Trust boundaries, modules, contracts, data flow, archive layout                             |
+| [docs/CLI.md](docs/CLI.md)                           | Every command and option with defaults                                                      |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md)             | Task tracks, all 20 tasks, SWE-bench workflow, limits                                       |
+| [docs/SAFETY.md](docs/SAFETY.md)                     | Threat model, controls, container stack, verification status                                |
+| [docs/TESTING.md](docs/TESTING.md)                   | What the 139 tests cover and how to run them                                                |
+| [docs/CICD.md](docs/CICD.md)                         | The GitHub Actions workflow: jobs, setup, local reproduction, releases, verification status |
+| [docs/ROADMAP.md](docs/ROADMAP.md)                   | What is implemented and what remains                                                        |
+| [code/README.md](code/README.md)                     | Source layout and import rules                                                              |
+| [frontend/README.md](frontend/README.md)             | The dashboard and its tests                                                                 |
+| [infrastructure/README.md](infrastructure/README.md) | The container stack files                                                                   |
 
 ## License
 

@@ -7,3 +7,4 @@ runs/
 .env
 code/logs/*.log
 frontend/node_modules/
+.ruff_cache/

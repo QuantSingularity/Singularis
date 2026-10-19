@@ -1,6 +1,6 @@
 # Testing
 
-136 automated tests run in about 40 seconds. None of them need an API key or network access. Model behavior is
+139 automated tests run in about 40 seconds. None of them need an API key or network access. Model behavior is
 replaced by scripted models that replay fixed tool calls, so the loop, the evaluator and the containment logic are
 tested for real while the model itself is not.
 
@@ -12,9 +12,9 @@ tested for real while the model itself is not.
 | One file           | `python -m pytest code/backend/tests/test_evolve.py`                                       |
 | One test           | `python -m pytest code/backend/tests/test_evolve.py -k valid_child`                        |
 | Dashboard tests    | `cd frontend && npm install`, then `python -m pytest code/backend/tests/test_frontend.py`  |
-| Real browser check | `scripts/test_frontend_browser.sh` (installs Playwright and Chromium; not part of the 136) |
+| Real browser check | `scripts/test_frontend_browser.sh` (installs Playwright and Chromium; not part of the 139) |
 
-Configuration lives in `pytest.ini` at the repository root (`testpaths = code`, `pythonpath = code`, importlib mode).
+Configuration lives in `pytest.ini` at the repository root (`testpaths = code`, `pythonpath = code`, prepend import mode).
 Shared helpers are in `code/testkit.py` and fixtures in `code/conftest.py`; the fixtures send logs to a temporary
 directory so tests never write to `code/logs`.
 
@@ -40,6 +40,7 @@ directory so tests never write to `code/logs`.
 | `test_isolation.py`           | 11    | Strict and permissive proxies, unreachable proxy, open and closed routes, scrubbed tool environment, leaky configuration, mount and status parsing, exit codes                    |
 | `test_meta.py`                | 7     | Template validation, UCB choice, duplicates, persistence, reward recording, invalid child penalty, meta prompt evolution                                                          |
 | `test_report_and_cli.py`      | 5     | Report content, `report`, `suite` and `lineage` commands, log file                                                                                                                |
+| `test_runner_paths.py`        | 3     | Relative scripted model paths resolved before a worker starts, other specs untouched, a relative path working end to end                                                          |
 | `test_sandbox.py`             | 13    | Path confinement, symlink escape, timeouts, output clipping, scrubbed environment, config round trip                                                                              |
 | `test_search.py`              | 8     | Failure classes and clusters, greedy selection, unknown strategy, focus rotation, greedy evolver, usage and manifest files                                                        |
 | `test_serve.py`               | 4     | Live report, index and health routes, 404s and traversal attempts, remote bind refused                                                                                            |
@@ -60,7 +61,16 @@ directory so tests never write to `code/logs`.
 | Editing the tests does not help on repository tasks                                 | `test_swebench.py::test_editing_the_tests_does_not_help`                               |
 | A flagged solution scores 0 in strict mode                                          | `test_integrity.py::test_strict_mode_zeroes_a_flagged_solution`                        |
 | Tampering with a stored genome or score is detected                                 | `test_signing.py`                                                                      |
+| A relative scripted model path works from any directory                             | `test_runner_paths.py::test_a_relative_scripted_model_works_end_to_end`                |
 | The dashboard keeps your selection across refreshes and recovers from a lost server | `test_frontend.py::test_live_refresh_follows_the_archive_keeps_selection_and_recovers` |
+
+## Configuration notes
+
+| Setting         | Value                                | Why                                                                                                                                                                        |
+| --------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--import-mode` | `prepend`                            | The source folder is named `code/`. In `importlib` mode pytest registers a module called `code` that shadows the standard library one, which crashes pytest on Python 3.13 |
+| Test file names | Must be unique across the repository | Prepend mode imports each test file by its basename                                                                                                                        |
+| `pythonpath`    | `code`                               | Lets tests import `ai_models`, `backend` and `testkit` by name                                                                                                             |
 
 ## Skips and requirements
 

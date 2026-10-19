@@ -118,6 +118,17 @@ def fitness(mean_score: float, mean_tokens: float, token_cap: int) -> float:
     return mean_score - 0.05 * min(1.0, mean_tokens / max(1, token_cap))
 
 
+def absolute_llm_spec(spec: str) -> str:
+    """Resolve a relative scripted model path against the current directory.
+
+    Workers run inside the task workspace, so a relative path would point somewhere else there.
+    """
+    kind, _, arg = spec.partition(":")
+    if kind == "scripted" and arg and not Path(arg).is_absolute():
+        return f"scripted:{Path(arg).resolve()}"
+    return spec
+
+
 def _worker_env(cfg: RunConfig) -> dict[str, str]:
     env = {"PYTHONPATH": str(SRC_ROOT)}
     if cfg.llm_spec.startswith("anthropic"):
@@ -164,7 +175,7 @@ def run_agent(
         "--out",
         str(trace_file),
         "--llm",
-        cfg.llm_spec,
+        absolute_llm_spec(cfg.llm_spec),
         "--sandbox-json",
         cfg.tool_sandbox.to_json(),
         "--max-steps",
