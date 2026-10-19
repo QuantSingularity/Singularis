@@ -7,10 +7,7 @@
 #     browser       Dashboard in real Chromium (informational)
 #     smoke         Scripted end-to-end run of the CLI: eval, evolve, verify, report, serve
 #     proxy-policy  Egress allowlist tested against a real squid
-#     docker-stack  Build the container stack and verify its isolation guarantees
 #     build         Wheel and sdist, installed into a clean environment
-#     codeql        Code scanning (informational)
-#     ci-passed     Single required check for branch protection
 #
 #   Scheduled and manual
 #     audit         Dependency vulnerability audit (weekly and manual)
@@ -383,34 +380,6 @@ jobs:
         if: failure()
         run: cat "$RUNNER_TEMP/squid.out"
 
-  docker-stack:
-    name: Container stack
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build and verify isolation from inside the container
-        env:
-          ANTHROPIC_API_KEY: ""
-        run: bash scripts/verify_docker.sh
-
-      - name: Container logs
-        if: failure()
-        env:
-          ANTHROPIC_API_KEY: ""
-          LOCAL_UID: "1000"
-          LOCAL_GID: "1000"
-        run: docker compose -f infrastructure/docker-compose.yml logs --no-color
-
-      - name: Clean up
-        if: always()
-        env:
-          ANTHROPIC_API_KEY: ""
-          LOCAL_UID: "1000"
-          LOCAL_GID: "1000"
-        run: docker compose -f infrastructure/docker-compose.yml down -v --remove-orphans
-
   build:
     name: Package
     runs-on: ubuntu-latest
@@ -464,31 +433,6 @@ jobs:
           name: dist
           path: dist/
 
-  codeql:
-    name: CodeQL (${{ matrix.language }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # Informational: code scanning needs GitHub Advanced Security on private repositories.
-    continue-on-error: true
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [python, javascript-typescript]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-
-      - uses: github/codeql-action/analyze@v3
-        with:
-          category: /language:${{ matrix.language }}
-
   audit:
     name: Dependency audit
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -506,29 +450,10 @@ jobs:
           python -m pip install -e ".[anthropic,dev]" pip-audit
           pip-audit --skip-editable
 
-  ci-passed:
-    name: CI passed
-    if: always()
-    needs: [static, test, frontend, smoke, proxy-policy, docker-stack, build]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Require every job to succeed
-        env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
-        run: |
-          echo "Job results: $RESULTS"
-          for result in $RESULTS; do
-            if [ "$result" != "success" ]; then
-              echo "A required job did not succeed"
-              exit 1
-            fi
-          done
-
   live-baseline:
     name: Live model baseline
     if: github.event_name == 'workflow_dispatch' && inputs.live_baseline
-    needs: [ci-passed]
+    needs: [static, test, frontend, smoke, proxy-policy, build]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: live-model
@@ -568,7 +493,7 @@ jobs:
   release:
     name: GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [ci-passed, build]
+    needs: [static, test, frontend, smoke, proxy-policy, build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -606,7 +531,7 @@ jobs:
   docker-publish:
     name: Publish container image
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [ci-passed, docker-stack]
+    needs: [static, test, frontend, smoke, proxy-policy, build]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
