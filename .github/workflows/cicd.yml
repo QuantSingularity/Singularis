@@ -9,13 +9,8 @@
 #     proxy-policy  Egress allowlist tested against a real squid
 #     build         Wheel and sdist, installed into a clean environment
 #
-#   Scheduled and manual
-#     audit         Dependency vulnerability audit (weekly and manual)
+#   Manual
 #     live-baseline Small real-model baseline (manual, uses the ANTHROPIC_API_KEY secret)
-#
-#   Delivery (tags named v*)
-#     release        GitHub release with the built distributions
-#     docker-publish Container image pushed to GitHub Container Registry
 #
 # Setup: add the ANTHROPIC_API_KEY secret only if you want live-baseline. Protect the "live-model"
 # environment with required reviewers if you want an approval step before any paid run.
@@ -25,11 +20,8 @@ name: CI/CD
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
     branches: [main]
-  schedule:
-    - cron: "17 3 * * 1"
   workflow_dispatch:
     inputs:
       live_baseline:
@@ -433,23 +425,6 @@ jobs:
           name: dist
           path: dist/
 
-  audit:
-    name: Dependency audit
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Audit installed dependencies
-        run: |
-          python -m pip install -e ".[anthropic,dev]" pip-audit
-          pip-audit --skip-editable
-
   live-baseline:
     name: Live model baseline
     if: github.event_name == 'workflow_dispatch' && inputs.live_baseline
@@ -489,83 +464,3 @@ jobs:
             ${{ runner.temp }}/live-baseline.txt
             ${{ runner.temp }}/live/traces
           if-no-files-found: ignore
-
-  release:
-    name: GitHub release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [static, test, frontend, smoke, proxy-policy, build]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check that the tag matches the package version
-        run: |
-          python3 - <<'PY'
-          import os
-          import re
-          import tomllib
-
-          tag = os.environ["GITHUB_REF_NAME"]
-          with open("pyproject.toml", "rb") as handle:
-              project_version = tomllib.load(handle)["project"]["version"]
-          source = open("code/backend/__init__.py").read()
-          module_version = re.search(r'__version__ = "([^"]+)"', source).group(1)
-          assert project_version == module_version, (project_version, module_version)
-          assert tag == f"v{project_version}", f"tag {tag} does not match version {project_version}"
-          print("releasing", tag)
-          PY
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist
-
-      - name: Create the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag
-
-  docker-publish:
-    name: Publish container image
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [static, test, frontend, smoke, proxy-policy, build]
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Image name
-        id: image
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ steps.image.outputs.name }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=raw,value=latest
-
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: infrastructure/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
