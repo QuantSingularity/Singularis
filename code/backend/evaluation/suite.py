@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 
+from backend.evaluation.suite_extra import EXTRA_TASKS
 from backend.evaluation.suite_finance import FINANCE_TASKS
 from backend.evaluation.suite_issues import ISSUE_TASKS
 from backend.evaluation.tasks import Task
@@ -734,4 +735,5 @@ BUILTIN_TASKS: list[Task] = [
     dataclasses.replace(_DRAWDOWN, track="finance"),
     *FINANCE_TASKS,
     *ISSUE_TASKS,
+    *EXTRA_TASKS,
 ]

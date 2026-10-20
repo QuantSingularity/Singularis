@@ -86,3 +86,12 @@ def test_every_fix_is_individually_necessary(task):
         assert (
             evaluate(task, _workspace(task, others)).score < 1.0
         ), f"{omitted} is not needed to pass {task.id}"
+
+
+def test_final_splits_have_enough_tasks_to_support_a_significance_claim():
+    from collections import Counter
+
+    from backend.evaluation.stats import MIN_TASKS
+
+    counts = Counter(t.split for t in BUILTIN_TASKS)
+    assert counts["heldout"] >= MIN_TASKS and counts["fresh"] >= MIN_TASKS

@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from backend.core.meter import RunUsage, get_meter, worker_env
 from backend.core.sandbox import ExecResult, SandboxConfig, run_command
 from backend.core.text import clip
 from backend.evaluation.evaluator import evaluate
-from backend.evaluation.integrity import changed_python_files, scan_workspace
+from backend.evaluation.integrity import Findings, changed_python_files, scan_findings
 from backend.evaluation.repo_eval import IGNORED
 from backend.evaluation.tasks import Task
 
@@ -21,14 +21,6 @@ TASK_TEMPLATE = (
     "You are working in a project directory, which is your current directory. "
     "Use the provided tools to inspect and change files and to run Python. "
     "When you are done, call the finish tool.\n\nTask:\n{prompt}"
-)
-
-PASSTHROUGH_ENV = (
-    "ANTHROPIC_BASE_URL",
-    "HTTPS_PROXY",
-    "HTTP_PROXY",
-    "SSL_CERT_FILE",
-    "REQUESTS_CA_BUNDLE",
 )
 
 
@@ -58,6 +50,7 @@ class TaskResult:
     error: str = ""
     trial: int = 0
     integrity_flags: list[str] = field(default_factory=list)
+    review_flags: list[str] = field(default_factory=list)
 
     @property
     def tokens(self) -> int:
@@ -129,15 +122,14 @@ def absolute_llm_spec(spec: str) -> str:
     return spec
 
 
-def _worker_env(cfg: RunConfig) -> dict[str, str]:
+def _worker_env(
+    cfg: RunConfig, run_env: dict[str, str] | None = None
+) -> dict[str, str]:
+    """Environment for a worker. It never contains the API key or a proxy: model traffic goes through the
+    meter, which holds the key (see backend.core.meter)."""
     env = {"PYTHONPATH": str(SRC_ROOT)}
-    if cfg.llm_spec.startswith("anthropic"):
-        key = os.environ.get("ANTHROPIC_API_KEY")
-        if key:
-            env["ANTHROPIC_API_KEY"] = key
-        for name in PASSTHROUGH_ENV:
-            if os.environ.get(name):
-                env[name] = os.environ[name]
+    if cfg.llm_spec.startswith("anthropic") and run_env:
+        env.update(run_env)
     return env
 
 
@@ -185,31 +177,54 @@ def run_agent(
         "--max-calls",
         str(cfg.max_calls),
     ]
+    meter, run_id = None, None
+    run_env = None
+    if cfg.llm_spec.startswith("anthropic"):
+        meter = get_meter()
+        run_id = meter.open_run(cfg.max_tokens, cfg.max_calls)
+        run_env = worker_env(meter, run_id)
     sandbox = SandboxConfig(
         timeout_s=cfg.wall_timeout_s,
         memory_mb=cfg.worker_memory_mb,
         cpu_s=int(cfg.wall_timeout_s) + 30,
-        env=_worker_env(cfg),
+        env=_worker_env(cfg, run_env),
     )
-    result = run_command(argv, Path(workspace), sandbox)
+    try:
+        result = run_command(argv, Path(workspace), sandbox)
+    finally:
+        metered = meter.close_run(run_id) if meter and run_id else None
+    trace = None
     if trace_file.is_file():
         try:
-            return json.loads(trace_file.read_text()), result
+            trace = json.loads(trace_file.read_text())
         except json.JSONDecodeError:
-            pass
-    reason = "timeout" if result.timed_out else "worker_failure"
-    trace = {
-        "steps": [],
-        "final_text": "",
-        "finished": False,
-        "stop_reason": reason,
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "wall_s": result.duration_s,
-        "error": clip(result.stderr.strip(), 2000),
-    }
+            trace = None
+    if trace is None:
+        reason = "timeout" if result.timed_out else "worker_failure"
+        trace = {
+            "steps": [],
+            "final_text": "",
+            "finished": False,
+            "stop_reason": reason,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "wall_s": result.duration_s,
+            "error": clip(result.stderr.strip(), 2000),
+        }
+    if metered is not None:
+        apply_metered_usage(trace, metered)
     trace_file.write_text(json.dumps(trace))
     return trace, result
+
+
+def apply_metered_usage(trace: dict, metered: RunUsage) -> None:
+    """Replace the genome's self-reported token counts with the meter's. The originals are kept for audit."""
+    reported = trace.get("input_tokens", 0) + trace.get("output_tokens", 0)
+    trace["reported_tokens"] = reported
+    trace["input_tokens"] = metered.input_tokens
+    trace["output_tokens"] = metered.output_tokens
+    trace["metered_calls"] = metered.calls
+    trace["token_report_mismatch"] = reported != metered.tokens
 
 
 def run_task(
@@ -237,19 +252,28 @@ def run_task(
     )
     outcome = evaluate(task, workspace)
     passed, error = outcome.passed, outcome.error or trace.get("error", "")
-    flags = []
+    findings = Findings()
     if cfg.integrity != "off":
         if task.kind == "repo":
-            flags = scan_workspace(
+            findings = scan_findings(
                 workspace,
                 only=changed_python_files(workspace, Path(task.repo_dir)),
                 relaxed=True,
             )
         else:
-            flags = scan_workspace(workspace)
-    if flags and cfg.integrity == "strict":
+            findings = scan_findings(workspace)
+    flags = list(findings.hard)
+    if (
+        outcome.tamper
+    ):  # the evaluator caught the run attacking it; this is not a heuristic
+        flags.append(f"evaluator: {outcome.tamper}")
+        passed = 0
+    if flags and (cfg.integrity == "strict" or outcome.tamper):
         passed = 0
         error = "integrity violation: " + "; ".join(flags)
+    review = list(findings.review)
+    if trace.get("token_report_mismatch"):
+        review.append("genome: reported token usage differs from the meter")
     return TaskResult(
         task_id=task.id,
         score=passed / outcome.total if outcome.total else 0.0,
@@ -262,6 +286,7 @@ def run_task(
         error=clip(error, 500),
         trial=trial,
         integrity_flags=flags,
+        review_flags=review,
     )
 
 

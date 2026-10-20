@@ -73,24 +73,47 @@ Run the recursive self-improvement loop. Resumable: running it again on the same
 | `--meta-llm`          | same as `--llm` | Model used for self-modification runs                  |
 | `--root`              | `runs/exp`      | Experiment directory                                   |
 | `--iterations`        | 5               | Self-modification steps to run                         |
+| `--train-trials`      | 2               | Repetitions per training task when scoring an agent    |
+| `--heldout-trials`    | 2               | Repetitions per held-out task                          |
 | `--seed`              | 0               | Random seed for parent selection                       |
 | `--selection`         | `open_ended`    | `open_ended` or `greedy`                               |
 | `--meta-evolve-every` | 0               | Evolve the meta prompt every N iterations (0 disables) |
+
+## live
+
+A small real-model run with a cost ceiling, a preflight check and an automatic summary. Start with `--dry-run`.
+
+| Option               | Default         | Meaning                                                                          |
+| -------------------- | --------------- | -------------------------------------------------------------------------------- |
+| shared options       | see above       |                                                                                  |
+| `--meta-llm`         | same as `--llm` | Model used for self-modification runs                                            |
+| `--root`             | `runs/live`     | Run directory; `LIVE_SUMMARY.md` is written here                                 |
+| `--iterations`       | 5               | Self-modification steps                                                          |
+| `--selection`        | `open_ended`    | `open_ended` or `greedy`                                                         |
+| `--train-trials`     | 1               | Repetitions per training task                                                    |
+| `--heldout-trials`   | 1               | Repetitions per held-out task                                                    |
+| `--max-total-tokens` | 6,000,000       | Stop before the next iteration once metered tokens reach this                    |
+| `--dry-run`          | off             | Print the worst-case cost (agent runs times `--max-tokens`) and exit; no API use |
+| `--skip-preflight`   | off             | Skip the one-call check through the metering proxy (scripted runs)               |
+
+The preflight verifies the API key (`ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY_FILE`), the SDK, and that a real call
+is counted by the meter. Token counts in the summary are the meter's, not the agents' own.
 
 ## experiment
 
 Run the unmodified seed and each arm, then compare them on held-out and fresh tasks with repeated trials.
 
-| Option                | Default             | Meaning                                   |
-| --------------------- | ------------------- | ----------------------------------------- |
-| shared options        | see above           |                                           |
-| `--meta-llm`          | same as `--llm`     | Model used for self-modification runs     |
-| `--root`              | `runs/experiment`   | Experiment directory                      |
-| `--iterations`        | 5                   | Self-modification steps per arm           |
-| `--trials`            | 3                   | Final evaluation repetitions per task     |
-| `--arms`              | `open_ended,greedy` | Comma separated selection strategies      |
-| `--meta-evolve-every` | 0                   | Evolve the meta prompt every N iterations |
-| `--seed`              | 0                   | Random seed                               |
+| Option                | Default             | Meaning                                     |
+| --------------------- | ------------------- | ------------------------------------------- |
+| shared options        | see above           |                                             |
+| `--meta-llm`          | same as `--llm`     | Model used for self-modification runs       |
+| `--root`              | `runs/experiment`   | Experiment directory                        |
+| `--iterations`        | 5                   | Self-modification steps per arm             |
+| `--trials`            | 3                   | Final evaluation repetitions per task       |
+| `--train-trials`      | 2                   | Repetitions per training task during search |
+| `--arms`              | `open_ended,greedy` | Comma separated selection strategies        |
+| `--meta-evolve-every` | 0                   | Evolve the meta prompt every N iterations   |
+| `--seed`              | 0                   | Random seed                                 |
 
 Writes `experiment.json` and `EXPERIMENT.md` under `--root`, and one evolution directory per arm.
 

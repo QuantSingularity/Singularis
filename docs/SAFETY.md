@@ -5,63 +5,77 @@ as untrusted. This document states what is protected, how, and how well that has
 
 ## Threat model
 
-| Threat                                           | Mitigation                                                                                                 | Residual risk                                                                 |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Agent code exhausts CPU, memory, disk or output  | rlimits, wall clock kill of the process group, output clipping                                             | Limits are per process; a container adds a hard cap                           |
-| Agent writes outside its workspace               | Resolved path checks in file tools, symlink escapes rejected                                               | `run_python` code can write anywhere the OS user can                          |
-| Agent steals the API key                         | Key goes only to the worker; tool subprocesses get a scrubbed environment                                  | The genome runs in the worker process, which holds the key; use a capped key  |
-| Agent calls out to the network                   | Container stack: internal network plus an allowlist proxy                                                  | Process-only mode has no network control                                      |
-| Agent edits or reads the hidden tests            | Tests are written after the agent finishes, into a separate copy; repository tests are reset to base first | Same-interpreter evaluator can be attacked by obfuscated code                 |
-| Agent forges a result                            | Per-run nonce, static tamper scan, signed records                                                          | A determined adversary can evade the scan; see below                          |
-| Agent raises its own budget                      | Budgets wrap the model client outside the genome; the worker is killed on timeout                          | The genome shares a process with the wrapper                                  |
-| Agent breaks the interface or ships odd files    | File policy, compile, import and contract validation before any evaluation                                 | None known for what is checked                                                |
-| Meta prompt drifts toward dangerous instructions | Validator requires placeholders, formats, length cap; evaluation and budgets are outside its reach         | The template can still say unwise things inside those limits; review variants |
-| Stored results change after the fact             | Signed records and `verify`                                                                                | Same-user processes that can read the key can re-sign                         |
-| Dashboard injects markup from agent text         | Everything rendered with `textContent`                                                                     | None known                                                                    |
-| Dashboard exposed to the network                 | Loopback only unless `--allow-remote`; three fixed routes                                                  | Remote mode shows diffs and notes to anyone who can reach it                  |
+| Threat                                              | Mitigation                                                                                                                                                                                                                                                           | Residual risk                                                                                                                                              |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent code exhausts CPU, memory, disk or output     | rlimits, wall clock kill of the process group, output clipping                                                                                                                                                                                                       | Limits are per process; a container adds a hard cap                                                                                                        |
+| Agent writes outside its workspace                  | Resolved path checks in file tools, symlink escapes rejected                                                                                                                                                                                                         | `run_python` code can write anywhere the OS user can                                                                                                       |
+| Agent steals the API key                            | The key lives only in the framework's metering proxy; a worker gets a loopback URL and a placeholder; the framework process is non-dumpable so a same-user child cannot read its environment or memory                                                               | An environment-variable key is still in the framework's initial environment block for root or a debugger; prefer `ANTHROPIC_API_KEY_FILE` and a capped key |
+| Agent calls out to the network                      | Container stack: internal network plus an allowlist proxy                                                                                                                                                                                                            | Process-only mode has no network control                                                                                                                   |
+| Agent edits or reads the hidden tests               | Function-task tests are sent to the harness on stdin and never exist on disk; repository tests, conftest.py, pytest.ini and tox.ini are reset to base first                                                                                                          | Same-interpreter evaluator can be attacked by obfuscated code                                                                                              |
+| Agent forges a result                               | Verdict read from a private descriptor, nonce on stdin, two canary tests with known outcomes and random names, a single record required, timeouts discarded, `os._exit` right after reporting; static tamper scan; signed records                                    | A solution that deliberately patches the test framework with knowledge of this harness can still try; see below                                            |
+| Agent raises its own budget or under-reports tokens | The metering proxy counts the tokens the API reports and refuses calls past the budget; the runner records its numbers and flags any mismatch with the genome's own report; genomes that touch the wrapper are rejected by the scan; the worker is killed on timeout | The in-worker wrapper is only a convenience; streaming calls are refused by the proxy                                                                      |
+| Agent breaks the interface or ships odd files       | File policy, compile, import and contract validation before any evaluation                                                                                                                                                                                           | None known for what is checked                                                                                                                             |
+| Meta prompt drifts toward dangerous instructions    | Validator requires placeholders, formats, length cap; evaluation and budgets are outside its reach                                                                                                                                                                   | The template can still say unwise things inside those limits; review variants                                                                              |
+| Stored results change after the fact                | Signed records and `verify`                                                                                                                                                                                                                                          | Same-user processes that can read the key can re-sign                                                                                                      |
+| Dashboard injects markup from agent text            | Everything rendered with `textContent`                                                                                                                                                                                                                               | None known                                                                                                                                                 |
+| Dashboard exposed to the network                    | Loopback only unless `--allow-remote`; three fixed routes                                                                                                                                                                                                            | Remote mode shows diffs and notes to anyone who can reach it                                                                                               |
 
 ## Controls in the framework
 
-| Control              | Where                     | Behavior                                                                            |
-| -------------------- | ------------------------- | ----------------------------------------------------------------------------------- |
-| rlimits and timeouts | `core/sandbox.py`         | Address space, CPU seconds and file size per process; process group kill on timeout |
-| Scrubbed environment | `core/sandbox.py`         | Only `PATH`, `HOME`, `LANG`, Python flags and explicit values reach a subprocess    |
-| Path confinement     | `core/sandbox.py`         | `resolve_in_workspace` rejects escapes and symlink tricks                           |
-| Budgets              | `ai_models/llm.py`        | Token and call limits around the model client                                       |
-| Genome validation    | `evolution/evolve.py`     | Types, size, no symlinks, compile, import and signature checks in a subprocess      |
-| Integrity scan       | `evaluation/integrity.py` | AST rules below; strict mode scores 0                                               |
-| Signed records       | `evolution/signing.py`    | HMAC over code hash, scores and result files                                        |
-| Manifest             | `evolution/manifest.py`   | Warns on resume if the engine or tasks changed                                      |
-| Human gate           | `cli.py export`           | Shows the diff and asks before copying a genome out                                 |
-| Localhost server     | `evolution/serve.py`      | Loopback only, three routes, no directory listing                                   |
+| Control              | Where                     | Behavior                                                                                                                                          |
+| -------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| rlimits and timeouts | `core/sandbox.py`         | Address space, CPU seconds and file size per process; process group kill on timeout                                                               |
+| Scrubbed environment | `core/sandbox.py`         | Only `PATH`, `HOME`, `LANG`, Python flags and explicit values reach a subprocess                                                                  |
+| Path confinement     | `core/sandbox.py`         | `resolve_in_workspace` rejects escapes and symlink tricks                                                                                         |
+| Budgets              | `core/meter.py`           | The metering proxy holds the key, counts tokens and refuses calls past the budget; `ai_models/llm.py` wraps the client too, as a fast local check |
+| Evaluator channel    | `evaluation/evaluator.py` | Verdict over a private descriptor, canary tests, stdin delivery, timeouts discarded                                                               |
+| Genome validation    | `evolution/evolve.py`     | Types, size, no symlinks, compile, import and signature checks in a subprocess                                                                    |
+| Integrity scan       | `evaluation/integrity.py` | Two tiers and two profiles, below; hard findings score 0 in strict mode                                                                           |
+| Signed records       | `evolution/signing.py`    | HMAC over code hash, scores and result files                                                                                                      |
+| Manifest             | `evolution/manifest.py`   | Warns on resume if the engine or tasks changed                                                                                                    |
+| Human gate           | `cli.py export`           | Shows the diff and asks before copying a genome out                                                                                               |
+| Localhost server     | `evolution/serve.py`      | Loopback only, three routes, no directory listing                                                                                                 |
 
 ### Integrity scan rules
 
-| Rule                 | Flags                                                                                                      |
-| -------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Suspicious imports   | `atexit`, `ctypes`, `gc`, `socket`, `subprocess`, `multiprocessing`, `signal`, `builtins`, `importlib`     |
-| Process tricks       | `os._exit`, `os.kill`, `os.system`, `os.popen`, `sys._getframe`, module-level `sys.exit`, `exit` or `quit` |
-| Dynamic code         | `eval`, `exec`, `__import__`                                                                               |
-| Evaluator references | String constants mentioning `hidden_tests` or `_runner`                                                    |
-| Patching             | Assigning into `unittest` or `builtins`                                                                    |
+Two tiers, because a rule that zeroes honest work teaches the search to dodge the rule instead of cheating less.
+A hard finding has no legitimate use in the code being judged and scores 0 in strict mode (or rejects a genome).
+A review finding is unusual but can be honest; it is recorded and shown, and never scored.
 
-| Mode               | Behavior                                                        |
-| ------------------ | --------------------------------------------------------------- |
-| `strict` (default) | A flagged solution scores 0 and the next generation is told why |
-| `warn`             | Flags are recorded, the score is kept                           |
-| `off`              | No scan                                                         |
+| Tier   | Solutions (task workspaces)                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hard   | `atexit`, `ctypes`, `gc`; `os._exit`, `os.kill`, `os.abort`; module-level `sys.exit`, `exit`, `quit`; `sys._getframe`, `settrace`, `setprofile`; `inspect.stack` and `currentframe`; frame attributes (`f_back`, `f_locals`, ...); assigning into `unittest` or `builtins` or `setattr` on them; `sys.modules['unittest']`; starting a thread or process at import time; pytest result hooks (`pytest_runtest_makereport`, `pytest_report_teststatus`, ...) |
+| Review | `subprocess`, `socket`, `threading`, `multiprocessing`, `signal`, `builtins`, `importlib`, `inspect` imports; `os.system`, `os.popen`, `os.fork`; `eval`, `exec`, `__import__`; threads inside functions; `sys.modules`; a string mentioning `hidden_tests` or `_runner` (docstrings are ignored); any edited `conftest.py`; files too large or unparsable to scan                                                                                          |
+
+Code under `if __name__ == "__main__":` is skipped, because the tests import modules and never run that block.
+
+Genomes are scanned with a stricter profile before they are ever executed. Hard findings reject the child:
+network, process and thread modules, `inspect`, `importlib`; `os.environ`, `os.getenv`; `eval`, `exec`, `compile`;
+`sys.modules`; attributes `budget`, `_inner` and `_client`; assignment to token and budget counters; imports of
+framework modules outside the genome contract (only `ai_models.llm`, `backend.core.sandbox`, `backend.core.text`
+and `backend.core.trace` are allowed); symlinks and files too large to scan. Review findings (such as a direct
+`open` call) are written to the child's `integrity.json`. The seed genome has no findings of either kind.
+
+Repository tasks run the same scan on the files the agent changed, with the import and dynamic-code rules
+relaxed. Whatever the scan says, edits to `conftest.py`, `pytest.ini` and `tox.ini` are discarded before judging.
+
+| Mode               | Behavior                                                                                            |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| `strict` (default) | A solution or genome with a hard finding is zeroed or rejected, and the next generation is told why |
+| `warn`             | Findings are recorded, scores and genomes are kept                                                  |
+| `off`              | No scan                                                                                             |
 
 Repository tasks use a relaxed scan (changed files only, no import or dynamic code rules).
 
 ## What process-level isolation does not do
 
-| Gap                                                 | Consequence                                                                                                         |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| No network isolation                                | Subprocess limits cannot block sockets                                                                              |
-| No filesystem isolation                             | Agent code can read anything the OS user can read                                                                   |
-| Evaluator shares an interpreter with candidate code | Obfuscated code could try to forge a result; held-out and fresh tasks, trace review and spot checks are the defense |
-| Signed records are tamper evidence, not prevention  | A process that can read the key (file or environment) can re-sign; keep the key outside the sandbox                 |
-| The genome sees the API key                         | It runs in the worker process; use a dedicated key with a spend cap                                                 |
+| Gap                                                  | Consequence                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No network isolation                                 | Subprocess limits cannot block sockets                                                                                                                                                                                                                                                                                                                                     |
+| No filesystem isolation                              | Agent code can read anything the OS user can read                                                                                                                                                                                                                                                                                                                          |
+| Candidate code runs in the same process as the tests | Forging by output, threads or guessed descriptors fails, and patching `unittest` is caught by canary tests. A solution written against this exact harness that patches the framework selectively could still try; held-out and fresh tasks, review findings and spot checks are the defense. Full separation would need an RPC boundary between the tests and the solution |
+| Signed records are tamper evidence, not prevention   | A process that can read the key (file or environment) can re-sign; keep the key outside the sandbox                                                                                                                                                                                                                                                                        |
+| The key is held by the framework process             | The genome never receives it, but root, a debugger or an environment dump of the framework can; use `ANTHROPIC_API_KEY_FILE` and a dedicated key with a spend cap                                                                                                                                                                                                          |
 
 ## The container stack
 

@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any, Protocol
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
+# Marker the metering proxy puts in the body of its budget refusal (kept in sync with backend.core.meter).
+BUDGET_MARKER = "singularis_budget_exhausted"
 
 
 @dataclass(frozen=True)
@@ -151,7 +153,13 @@ class AnthropicClient:
                 }
                 for t in tools
             ]
-        response = self._client.messages.create(**kwargs)
+        try:
+            response = self._client.messages.create(**kwargs)
+        except Exception as exc:
+            # the meter refuses calls once the run's budget is spent (HTTP 403 with a marker in the body)
+            if BUDGET_MARKER in str(exc):
+                raise BudgetExceeded("budget refused by the meter") from exc
+            raise
         text = "".join(b.text for b in response.content if b.type == "text")
         calls = [
             ToolCall(b.id, b.name, dict(b.input))

@@ -17,6 +17,8 @@ services:
     user: "${LOCAL_UID:-10001}:${LOCAL_GID:-10001}"
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # preferred over the variable: point at a mounted secret file, so the key is not in the environment block
+      ANTHROPIC_API_KEY_FILE: ${ANTHROPIC_API_KEY_FILE:-}
       HTTPS_PROXY: http://egress-proxy:3128
       HTTP_PROXY: http://egress-proxy:3128
     networks: [sandbox]

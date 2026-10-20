@@ -40,7 +40,7 @@ def test_experiment_compares_arms_against_the_seed(tmp_path):
     text = (root / "EXPERIMENT.md").read_text()
     assert (
         "Experiment report" in text
-        and "No comparison excludes zero" in text
+        and "No comparison is reliable" in text
         and "\u2014" not in text
     )
 
@@ -93,4 +93,4 @@ def test_markdown_flags_reliable_gains():
         },
     }
     text = render_markdown(report)
-    assert "(reliable)" in text and "At least one comparison excludes zero" in text
+    assert "(reliable)" in text and "At least one comparison passes" in text

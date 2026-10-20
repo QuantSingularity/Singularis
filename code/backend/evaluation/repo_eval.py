@@ -15,6 +15,51 @@ RESULT_LINE = re.compile(
     r"^(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS) (.+)$", re.MULTILINE
 )
 IGNORED = shutil.ignore_patterns("__pycache__", ".git", ".pytest_cache")
+# Files that change how pytest collects, runs and reports. An agent's edits to them are discarded before
+# judging, because a conftest hook can turn failures into passes without touching the code under test.
+PYTEST_CONTROL_FILES = ("conftest.py", "pytest.ini", "tox.ini")
+SUMMARY_HEADER = "short test summary info"
+FOOTER = re.compile(r"^=*\s*\d+ .*\bin [\d.]+s\b.*$")
+
+
+def summary_section(output: str) -> str:
+    """The block pytest prints under 'short test summary info', and nothing around it.
+
+    Captured stdout of individual tests appears earlier in `-rA` output and anything printed after the
+    footer line comes from code running after pytest finished, so neither is allowed to speak for a test.
+    """
+    if SUMMARY_HEADER not in output:
+        return ""
+    lines = output.rsplit(SUMMARY_HEADER, 1)[1].splitlines()[1:]
+    kept = []
+    for line in lines:
+        if FOOTER.match(line):
+            break
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def reset_pytest_control_files(workspace: Path, base: Path) -> None:
+    """Put every conftest.py / pytest.ini / tox.ini back to the base state (deleting ones the agent added)."""
+
+    def control_files(root: Path) -> set[str]:
+        found = set()
+        for name in PYTEST_CONTROL_FILES:
+            for path in root.rglob(name):
+                rel = path.relative_to(root)
+                if not any(part in {".git", "__pycache__"} for part in rel.parts):
+                    found.add(rel.as_posix())
+        return found
+
+    for rel in control_files(workspace) | control_files(base):
+        destination, original = workspace / rel, base / rel
+        if original.is_file():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.is_symlink():
+                destination.unlink()
+            shutil.copy2(original, destination)
+        elif destination.exists() or destination.is_symlink():
+            destination.unlink()
 
 
 def patch_paths(patch: str) -> list[str]:
@@ -61,6 +106,7 @@ def prepare_eval_dir(task: Task, workspace: Path, target: Path) -> str | None:
     """
     shutil.copytree(workspace, target, symlinks=True, ignore=IGNORED)
     base = Path(task.repo_dir)
+    reset_pytest_control_files(target, base)
     for rel in patch_paths(task.test_patch):
         destination = target / rel
         if (base / rel).is_file():
@@ -106,7 +152,7 @@ def evaluate_repo(task: Task, workspace: Path):
         )
     if result.timed_out:
         return EvalOutcome(passed=0, total=total, error="tests timed out")
-    statuses = parse_pytest_results(result.stdout)
+    statuses = parse_pytest_results(summary_section(result.stdout))
     if not statuses:
         return EvalOutcome(
             passed=0,

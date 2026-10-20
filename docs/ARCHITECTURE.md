@@ -31,7 +31,9 @@ and only that directory is read back.
 | `backend/evaluation/tasks.py`                                        | `Task` model, directory loader, split selection                                                          |
 | `backend/evaluation/suite.py`, `suite_finance.py`, `suite_issues.py` | The 20 built-in tasks                                                                                    |
 | `backend/evaluation/runner.py`                                       | Run a task or suite with trials, integrity enforcement, fitness function                                 |
-| `backend/evaluation/integrity.py`                                    | AST scan for evaluator tampering                                                                         |
+| `backend/evaluation/integrity.py`                                    | Two-tier AST scan for evaluator tampering, with a solution profile and a stricter genome profile         |
+| `backend/core/meter.py`                                              | Metering proxy: holds the API key, counts tokens, enforces budgets, hardens the framework process        |
+| `backend/evolution/live.py`                                          | Cost ceiling, preflight call and summary for a small real-model run                                      |
 | `backend/evaluation/stats.py`                                        | Bootstrap intervals and paired comparison                                                                |
 | `backend/evolution/archive.py`                                       | SQLite lineage tree, parent selection strategies                                                         |
 | `backend/evolution/evolve.py`                                        | The loop: diagnose, modify, validate, evaluate, record                                                   |
@@ -58,15 +60,15 @@ def solve(task: str, workspace: Path, llm: LLMClient, sandbox: SandboxConfig, ma
 
 ## Running one task
 
-| Step | Action                                                                                                | Module                         |
-| ---- | ----------------------------------------------------------------------------------------------------- | ------------------------------ |
-| 1    | Create a fresh workspace: starter files, or a copy of the repository checkout without `.git`          | `runner.py`                    |
-| 2    | Start `python -m backend.core.worker` under rlimits and a wall clock timeout                          | `runner.py`                    |
-| 3    | The worker loads the genome, wraps the model in a budget, calls `solve()`, writes a JSON trace        | `worker.py`                    |
-| 4    | Crash, timeout or bad return becomes a trace with `genome_error`, `timeout` or `worker_failure`       | `runner.py`                    |
-| 5    | Copy the workspace, add hidden tests, run them, parse the result (nonce protected for function tasks) | `evaluator.py`, `repo_eval.py` |
-| 6    | Scan agent-written code for tampering; in strict mode a flag zeroes the score                         | `integrity.py`                 |
-| 7    | Return a `TaskResult` with score, tokens, stop reason, flags                                          | `runner.py`                    |
+| Step | Action                                                                                                                                                                                                        | Module                         |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| 1    | Create a fresh workspace: starter files, or a copy of the repository checkout without `.git`                                                                                                                  | `runner.py`                    |
+| 2    | Start `python -m backend.core.worker` under rlimits and a wall clock timeout                                                                                                                                  | `runner.py`                    |
+| 3    | The worker loads the genome, wraps the model in a budget, calls `solve()`, writes a JSON trace                                                                                                                | `worker.py`                    |
+| 4    | Crash, timeout or bad return becomes a trace with `genome_error`, `timeout` or `worker_failure`                                                                                                               | `runner.py`                    |
+| 5    | Copy the workspace, send hidden tests on stdin, read the verdict from a private channel and check two canary tests; repository tasks reset conftest and pytest config and parse only the pytest summary block | `evaluator.py`, `repo_eval.py` |
+| 6    | Scan agent-written code for tampering; in strict mode a hard finding zeroes the score, review findings are only recorded                                                                                      | `integrity.py`                 |
+| 7    | Return a `TaskResult` with score, metered tokens, stop reason, hard and review flags                                                                                                                          | `runner.py`                    |
 
 Stop reasons: `finished`, `no_tool_calls`, `max_steps`, `budget`, `llm_error`, `genome_error`, `timeout`, `worker_failure`.
 
@@ -133,14 +135,14 @@ Stop reasons: `finished`, `no_tool_calls`, `max_steps`, `budget`, `llm_error`, `
 
 ## Experiment protocol
 
-| Stage            | Action                                                                                |
-| ---------------- | ------------------------------------------------------------------------------------- |
-| Control          | Evaluate the unmodified seed on held-out and fresh tasks with repeated trials         |
-| Arms             | For each arm, run a full evolution in its own directory                               |
-| Best agent       | Highest train fitness in the arm                                                      |
-| Final evaluation | The same repeated trials on held-out and fresh tasks                                  |
-| Comparison       | Paired bootstrap over tasks of the per-task mean difference from the seed             |
-| Output           | `experiment.json` and `EXPERIMENT.md` with confidence intervals and an honest reading |
+| Stage            | Action                                                                                  |
+| ---------------- | --------------------------------------------------------------------------------------- |
+| Control          | Evaluate the unmodified seed on held-out and fresh tasks with repeated trials           |
+| Arms             | For each arm, run a full evolution in its own directory                                 |
+| Best agent       | Highest train fitness in the arm                                                        |
+| Final evaluation | The same repeated trials on held-out and fresh tasks                                    |
+| Comparison       | Paired bootstrap interval and exact sign-flip test over tasks; no verdict below 8 tasks |
+| Output           | `experiment.json` and `EXPERIMENT.md` with confidence intervals and an honest reading   |
 
 ## Archive and run directory
 

@@ -57,3 +57,24 @@ def test_validate_genome_accepts_seed_and_rejects_syntax_error(tmp_path):
 
 def test_diff_of_identical_genomes_is_empty():
     assert diff_genomes(BUILTIN_GENOME, BUILTIN_GENOME) == ""
+
+
+def test_search_scores_agents_over_repeated_trials(tmp_path):
+    import json
+
+    evolver = make_evolver(tmp_path, good_meta_script())
+    evolver.run()
+    data = json.loads(
+        (evolver.archive.agent_dir("a0000") / "results_train.json").read_text()
+    )
+    trials = {r["trial"] for r in data["results"]}
+    assert trials == set(range(evolver.config.train_trials)) and len(trials) >= 2
+
+
+def test_the_token_cap_stops_the_loop_before_the_next_iteration(tmp_path):
+    from dataclasses import replace
+
+    evolver = make_evolver(tmp_path, good_meta_script())
+    evolver.config = replace(evolver.config, iterations=5, max_total_tokens=1)
+    evolver.run()
+    assert evolver.usage["iterations"] == 0 and evolver.tokens_spent() >= 1

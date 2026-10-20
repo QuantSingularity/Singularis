@@ -19,6 +19,7 @@ class ExperimentConfig:
     arms: tuple[str, ...] = ("open_ended", "greedy")
     iterations: int = 5
     trials: int = 3
+    train_trials: int = 2
     meta_evolve_every: int = 0
     workers: int = 4
     seed: int = 0
@@ -114,6 +115,7 @@ def run_experiment(
                 iterations=cfg.iterations,
                 workers=cfg.workers,
                 seed=cfg.seed,
+                train_trials=cfg.train_trials,
                 selection=arm,
                 meta_evolve_every=cfg.meta_evolve_every,
             ),
@@ -172,26 +174,32 @@ def render_markdown(report: dict) -> str:
             cell(data["final"][s]) for s in splits
         )
         lines.append(row + f" | {usage['meta_tokens'] + usage['eval_tokens']} |")
-    lines += ["", "## Change relative to the seed (paired bootstrap over tasks)", ""]
+    lines += [
+        "",
+        "## Change relative to the seed (paired bootstrap interval and exact sign-flip test over tasks)",
+        "",
+    ]
     any_significant = False
     for arm, data in report["arms"].items():
         for split, comparison in data["vs_seed"].items():
-            verdict = (
-                "reliable"
-                if comparison["significant"]
-                else "not distinguishable from zero"
-            )
+            if comparison["significant"]:
+                verdict = "reliable"
+            elif comparison.get("underpowered"):
+                verdict = "underpowered: too few tasks to call"
+            else:
+                verdict = "not distinguishable from zero"
             any_significant = any_significant or comparison["significant"]
             lines.append(
                 f"- {arm}, {split}: {comparison['mean_diff']:+.3f} [{comparison['ci_low']:+.3f}, "
-                f"{comparison['ci_high']:+.3f}] over {comparison['n']} tasks ({verdict})"
+                f"{comparison['ci_high']:+.3f}] p={comparison.get('p_value', float('nan')):.3f} "
+                f"over {comparison['n']} tasks ({verdict})"
             )
     lines += ["", "## Reading these results", ""]
     lines.append(
-        "At least one comparison excludes zero. Check that the gain holds on the fresh split, repeat with more seeds, "
+        "At least one comparison passes both the interval and the permutation test. Check that the gain holds on the fresh split, repeat with more seeds, "
         "and read the diffs before drawing conclusions."
         if any_significant
-        else "No comparison excludes zero. With few tasks the intervals are wide, so this does not show that "
+        else "No comparison is reliable. With few tasks the intervals are wide, so this does not show that "
         "self-modification fails, only that this run cannot tell it apart from the seed."
     )
     return "\n".join(lines) + "\n"

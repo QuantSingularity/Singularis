@@ -7,6 +7,7 @@ import subprocess
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Sequence
 
 from backend.core.text import clip
 
@@ -79,7 +80,18 @@ def _kill_tree(proc: subprocess.Popen) -> None:
         pass
 
 
-def run_command(argv: list[str], cwd: Path, config: SandboxConfig) -> ExecResult:
+def run_command(
+    argv: list[str],
+    cwd: Path,
+    config: SandboxConfig,
+    stdin_text: str | None = None,
+    pass_fds: Sequence[int] = (),
+) -> ExecResult:
+    """Run a command with resource limits and a scrubbed environment.
+
+    `stdin_text` is delivered on stdin, which is how secrets (a nonce, test source) reach a child without
+    appearing in argv or the environment. `pass_fds` keeps the listed file descriptors open in the child.
+    """
     cwd = Path(cwd)
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
@@ -95,17 +107,18 @@ def run_command(argv: list[str], cwd: Path, config: SandboxConfig) -> ExecResult
         argv,
         cwd=str(cwd),
         env=env,
-        stdin=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL if stdin_text is None else subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         errors="replace",
         start_new_session=posix,
         preexec_fn=_preexec(config) if posix else None,
+        pass_fds=tuple(pass_fds) if posix else (),
     )
     timed_out = False
     try:
-        stdout, stderr = proc.communicate(timeout=config.timeout_s)
+        stdout, stderr = proc.communicate(input=stdin_text, timeout=config.timeout_s)
     except subprocess.TimeoutExpired:
         timed_out = True
         _kill_tree(proc)

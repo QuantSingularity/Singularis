@@ -6,13 +6,14 @@ import random
 import shutil
 import sys
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
 from ai_models import genome as _genome_pkg
 from backend.core.sandbox import SandboxConfig, run_command
 from backend.core.text import clip
+from backend.evaluation.integrity import Findings, scan_genome
 from backend.evaluation.runner import (
     SRC_ROOT,
     RunConfig,
@@ -118,6 +119,11 @@ class EvolveConfig:
     meta_evolve_every: int = 0
     max_genome_bytes: int = 200_000
     max_genome_files: int = 30
+    # repetitions per task. One trial per task makes selection mostly noise, so search evaluates repeatedly.
+    train_trials: int = 2
+    heldout_trials: int = 2
+    # stop before starting an iteration once metered tokens (self-modification + evaluation) reach this; 0 = no cap
+    max_total_tokens: int = 0
 
 
 def check_genome_files(genome: Path, max_bytes: int, max_files: int) -> str | None:
@@ -251,10 +257,13 @@ class Evolver:
         return [t for t in self.tasks if t.split == name]
 
     def _evaluate_split(self, agent_id: str, split: str):
+        trials = (
+            self.config.train_trials if split == "train" else self.config.heldout_trials
+        )
         suite = run_suite(
             self._split(split),
             self.archive.genome_dir(agent_id),
-            self.config.eval_run,
+            replace(self.config.eval_run, trials=max(1, trials)),
             self.archive.agent_dir(agent_id) / split,
             self.config.workers,
         )
@@ -417,6 +426,15 @@ class Evolver:
             )
         if problem is None:
             problem = validate_genome(candidate)
+        findings = Findings()
+        if problem is None and cfg.eval_run.integrity != "off":
+            # the agent's own code runs beside the budget wrapper and the model client, so it is scanned
+            # with the strict genome profile before it is ever executed
+            findings = scan_genome(candidate)
+            if findings.hard and cfg.eval_run.integrity == "strict":
+                problem = "integrity violation in genome: " + "; ".join(
+                    findings.hard[:5]
+                )
         if problem is not None:
             self.archive.add(
                 child_id, parent.id, generation, "invalid", problem, focus, variant_id
@@ -436,6 +454,15 @@ class Evolver:
             self.archive.genome_dir(parent.id), self.archive.genome_dir(child_id)
         )
         (self.archive.agent_dir(child_id) / "diff.patch").write_text(patch)
+        if findings:
+            (self.archive.agent_dir(child_id) / "integrity.json").write_text(
+                json.dumps(findings.to_dict(), indent=2)
+            )
+            report["integrity_review"] = findings.review + findings.hard
+            note = (
+                note
+                + f" [integrity review: {len(findings.review) + len(findings.hard)} finding(s)]"
+            )
         self.archive.add(
             child_id, parent.id, generation, "valid", note, focus, variant_id
         )
@@ -470,6 +497,18 @@ class Evolver:
         self._save_usage()
         return report
 
+    def tokens_spent(self) -> int:
+        return self.usage["meta_tokens"] + self.usage["eval_tokens"]
+
     def run(self) -> list[dict]:
         self.bootstrap()
-        return [self.step() for _ in range(self.config.iterations)]
+        reports = []
+        for _ in range(self.config.iterations):
+            cap = self.config.max_total_tokens
+            if cap and self.tokens_spent() >= cap:
+                self.log(
+                    f"token cap reached ({self.tokens_spent()} >= {cap}); stopping early"
+                )
+                break
+            reports.append(self.step())
+        return reports

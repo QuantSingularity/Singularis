@@ -17,6 +17,8 @@ from backend.evaluation.tasks import load_tasks_from_dir, select_tasks
 from backend.evolution.archive import Archive
 from backend.evolution.evolve import BUILTIN_GENOME, EvolveConfig, Evolver, diff_genomes
 from backend.evolution.experiment import ExperimentConfig, run_experiment
+from backend.evolution.live import plan as live_plan
+from backend.evolution.live import preflight, summarize
 from backend.evolution.report import write_report
 from backend.evolution.serve import serve as serve_report
 from backend.evolution.signing import verify_all
@@ -106,11 +108,53 @@ def cmd_evolve(args) -> int:
         seed=args.seed,
         selection=args.selection,
         meta_evolve_every=args.meta_evolve_every,
+        train_trials=args.train_trials,
+        heldout_trials=args.heldout_trials,
     )
     Evolver(
         args.root, _tasks(args), config, log=logging.getLogger("singularis").info
     ).run()
     return cmd_lineage(args)
+
+
+def cmd_live(args) -> int:
+    """A small real-model run with a cost ceiling, a preflight check and an automatic summary."""
+    tasks = _tasks(args)
+    planned = live_plan(
+        tasks, args.iterations, args.train_trials, args.heldout_trials, args.max_tokens
+    )
+    print(
+        f"plan: at most {planned['agent_runs_max']} agent runs "
+        f"({planned['seed_runs']} for the seed, up to {planned['runs_per_iteration_max']} per iteration); "
+        f"worst case {planned['tokens_upper_bound']:,} tokens at {args.max_tokens:,} per run; "
+        f"the run stops early at {args.max_total_tokens:,} metered tokens."
+    )
+    if args.dry_run:
+        return 0
+    if not args.skip_preflight:
+        for spec in dict.fromkeys([args.llm, args.meta_llm or args.llm]):
+            problems, info = preflight(spec)
+            if problems:
+                print("preflight failed:\n  " + "\n  ".join(problems), file=sys.stderr)
+                return 2
+            print(f"preflight ok ({spec}): {info}")
+    config = EvolveConfig(
+        eval_run=_run_config(args),
+        meta_run=_run_config(args, args.meta_llm),
+        iterations=args.iterations,
+        workers=args.workers,
+        seed=args.seed,
+        selection=args.selection,
+        meta_evolve_every=0,
+        train_trials=args.train_trials,
+        heldout_trials=args.heldout_trials,
+        max_total_tokens=args.max_total_tokens,
+    )
+    Evolver(args.root, tasks, config, log=logging.getLogger("singularis").info).run()
+    text = summarize(args.root, planned)
+    (Path(args.root) / "LIVE_SUMMARY.md").write_text(text)
+    print(text)
+    return 0
 
 
 def cmd_lineage(args) -> int:
@@ -161,6 +205,7 @@ def cmd_experiment(args) -> int:
         arms=tuple(a for a in args.arms.split(",") if a),
         iterations=args.iterations,
         trials=args.trials,
+        train_trials=args.train_trials,
         meta_evolve_every=args.meta_evolve_every,
         workers=args.workers,
         seed=args.seed,
@@ -306,7 +351,50 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="evolve the meta prompt every N iterations (0 = off)",
     )
+    p.add_argument(
+        "--train-trials",
+        type=int,
+        default=2,
+        help="repetitions per training task when scoring an agent (more = less selection noise, more tokens)",
+    )
+    p.add_argument(
+        "--heldout-trials", type=int, default=2, help="repetitions per held-out task"
+    )
     p.set_defaults(func=cmd_evolve)
+
+    p = sub.add_parser(
+        "live",
+        help="small real-model run: cost ceiling, preflight check, automatic summary",
+    )
+    _add_run_args(p)
+    p.add_argument(
+        "--meta-llm", help="model used for self-modification (default: same as --llm)"
+    )
+    p.add_argument("--root", type=Path, default=Path("runs/live"))
+    p.add_argument("--iterations", type=int, default=5)
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument(
+        "--selection", choices=["open_ended", "greedy"], default="open_ended"
+    )
+    p.add_argument("--train-trials", type=int, default=1)
+    p.add_argument("--heldout-trials", type=int, default=1)
+    p.add_argument(
+        "--max-total-tokens",
+        type=int,
+        default=6_000_000,
+        help="stop before the next iteration once metered tokens reach this",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the cost ceiling and exit without calling the API",
+    )
+    p.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="skip the real test call (for scripted runs)",
+    )
+    p.set_defaults(func=cmd_live)
 
     p = sub.add_parser(
         "experiment",
@@ -325,6 +413,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--arms",
         default="open_ended,greedy",
         help="comma separated selection strategies",
+    )
+    p.add_argument(
+        "--train-trials",
+        type=int,
+        default=2,
+        help="repetitions per training task during search",
     )
     p.add_argument("--meta-evolve-every", type=int, default=0)
     p.add_argument("--seed", type=int, default=0)

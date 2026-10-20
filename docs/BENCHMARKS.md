@@ -13,8 +13,8 @@ Singularis scores agents on tasks with hidden tests. All tasks are scored the sa
 | Split     | Built-in tasks | Role                                                      |
 | --------- | -------------- | --------------------------------------------------------- |
 | `train`   | 11             | Used for selection during search                          |
-| `heldout` | 5              | Reported for promising children, never used for selection |
-| `fresh`   | 4              | Not evaluated until the final experiment comparison       |
+| `heldout` | 9              | Reported for promising children, never used for selection |
+| `fresh`   | 8              | Not evaluated until the final experiment comparison       |
 
 `singularis validate-suite` checks every task. The starting state must fail, and the reference solution (or the gold
 patch for repository tasks) must pass.
@@ -46,6 +46,22 @@ patch for repository tasks) must pass.
 | `rolling_zscore`  | fresh   | 6            | Rolling z-scores with `None` warm-up and zero-variance handling             |
 | `black_scholes`   | fresh   | 4            | European call and put, put-call parity, input validation                    |
 
+## Additional held-out and fresh tasks (8 tasks)
+
+Added so each final split has at least 8 tasks, the minimum at which the experiment report will call a difference
+reliable. They live in `backend/evaluation/suite_extra.py` and are validated like every other task.
+
+| Task                  | Track   | Split   | Hidden tests | Specification                                                                     |
+| --------------------- | ------- | ------- | ------------ | --------------------------------------------------------------------------------- |
+| `rle_codec`           | general | heldout | 8            | Run-length `encode` and `decode`, multi-digit counts, malformed input, round trip |
+| `parse_duration`      | general | heldout | 5            | `1h30m15s` style strings to seconds, any order, duplicate and malformed units     |
+| `black_scholes_call`  | finance | heldout | 7            | Call price with the expired and zero-volatility limits and input validation       |
+| `longest_drawdown`    | finance | heldout | 7            | Longest run of periods strictly below the running peak                            |
+| `word_wrap`           | general | fresh   | 7            | Greedy wrapping, whitespace collapse, over-long words kept whole                  |
+| `bracket_error_index` | general | fresh   | 5            | Index of the first mismatched closer or the earliest unclosed opener              |
+| `max_subarray`        | general | fresh   | 7            | Best contiguous slice with exact tie-breaking rules                               |
+| `sortino_ratio`       | finance | fresh   | 6            | Downside deviation over all returns, target shift, infinite and zero edge cases   |
+
 ## Built-in issue tasks (5 tasks)
 
 Each task is a small package with a realistic bug report. The visible tests in each starter pass, so they are not
@@ -75,14 +91,14 @@ starter), so compare the pass rate as well as the mean score.
 
 ### Evaluation protocol
 
-| Step | Action                                                                                |
-| ---- | ------------------------------------------------------------------------------------- |
-| 1    | Copy the agent's workspace to a temporary directory                                   |
-| 2    | Reset every file the test patch touches to its base state (editing tests cannot help) |
-| 3    | Apply the test patch with `git apply`                                                 |
-| 4    | Run the test files with `python -m pytest -rA` using your interpreter                 |
-| 5    | Score the fraction of FAIL_TO_PASS tests that pass                                    |
-| 6    | If any PASS_TO_PASS test fails, the score is 0                                        |
+| Step | Action                                                                                                |
+| ---- | ----------------------------------------------------------------------------------------------------- |
+| 1    | Copy the agent's workspace to a temporary directory                                                   |
+| 2    | Reset every file the test patch touches, and every `conftest.py`, `pytest.ini` and `tox.ini`, to base |
+| 3    | Apply the test patch with `git apply`                                                                 |
+| 4    | Run the test files with `python -m pytest -rA`; only the final summary block is parsed                |
+| 5    | Score the fraction of FAIL_TO_PASS tests that pass                                                    |
+| 6    | If any PASS_TO_PASS test fails, the score is 0                                                        |
 
 ### Running real data
 

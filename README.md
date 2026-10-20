@@ -10,36 +10,38 @@ AlphaEvolve, with the engineering needed to run it reproducibly, measure it hone
 
 ## At a glance
 
-| Item               | Detail                                                                                               |
-| ------------------ | ---------------------------------------------------------------------------------------------------- |
-| Language           | Python 3.10 or newer, standard library only at runtime (the `anthropic` package is optional)         |
-| What evolves       | `code/ai_models/genome/`: system prompt, seven tools, agent loop                                     |
-| What never changes | Evaluator, hidden tests, budgets, sandbox, selection, archive (the frozen engine in `code/backend/`) |
-| Default model      | `claude-sonnet-5-5` through the Anthropic API, or a scripted model for tests                         |
-| Benchmark          | 20 built-in tasks in 3 tracks, 11 train, 5 held-out, 4 fresh, plus SWE-bench style repository tasks  |
-| Search             | Open-ended archive or greedy hill climbing, rotating mutation focus, failure clustering              |
-| Meta level         | Optional evolvable instruction template, chosen by a bandit                                          |
-| Measurement        | Repeated trials, bootstrap confidence intervals, paired comparison against the seed                  |
-| Integrity          | Static tamper scan, signed records, reproducibility manifest                                         |
-| Containment        | Process sandbox by default, network-isolated container stack available                               |
-| Tests              | 139 automated tests, none need an API key                                                            |
-| Size               | About 5,500 lines of Python excluding tests (about 3,100 of them are benchmark task data)            |
+| Item               | Detail                                                                                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language           | Python 3.10 or newer, standard library only at runtime (the `anthropic` package is optional)                                                    |
+| What evolves       | `code/ai_models/genome/`: system prompt, seven tools, agent loop                                                                                |
+| What never changes | Evaluator, hidden tests, budgets, sandbox, selection, archive (the frozen engine in `code/backend/`)                                            |
+| Default model      | `claude-sonnet-5-5` through the Anthropic API, or a scripted model for tests                                                                    |
+| Benchmark          | 28 built-in tasks in 3 tracks: 11 train, 9 held-out, 8 fresh, plus SWE-bench style repository tasks                                             |
+| Search             | Open-ended archive or greedy hill climbing, rotating mutation focus, failure clustering                                                         |
+| Meta level         | Optional evolvable instruction template, chosen by a bandit                                                                                     |
+| Measurement        | Repeated trials in search and final runs, bootstrap interval plus exact sign-flip test, underpowered guard                                      |
+| Integrity          | Private result channel with canary tests, two-tier tamper scan (tasks and genomes), token metering outside the genome, signed records, manifest |
+| Containment        | Process sandbox by default, network-isolated container stack available                                                                          |
+| Tests              | 217 automated tests plus 2 that need node, none need an API key                                                                                 |
+| Size               | About 7,700 lines of Python excluding tests (about 2,900 of them are benchmark task data)                                                       |
 
 ## Status
 
 This repository ships infrastructure and verified tooling. It does not ship results.
 
-| Capability                                | Status                           | Evidence                                                                                    |
-| ----------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------- |
-| Self-improvement loop, archive, selection | Implemented and tested           | End-to-end tests with scripted models                                                       |
-| Meta prompt evolution                     | Implemented and tested           | Bandit, validation and step tests                                                           |
-| Benchmark (20 tasks)                      | Verified                         | Starters fail, references pass, each fix is individually required                           |
-| Statistics and experiment protocol        | Implemented and tested           | Bootstrap, paired comparison and report tests                                               |
-| Integrity scan and signed records         | Implemented and tested           | Tamper cases detected; this is tamper evidence, not prevention                              |
-| SWE-bench adapter                         | Verified on a synthetic instance | Real git repository in SWE-bench format; real SWE-bench data not tried                      |
-| Container stack                           | Partly verified                  | Compose and Dockerfile validated, proxy tested against a real squid; image never built here |
-| Live dashboard refresh                    | Verified in a simulated browser  | Real server plus jsdom; a real Chromium script is provided but was not run                  |
-| Runs against a live model                 | Not done                         | Cost, validity rate and any improvement are unmeasured                                      |
+| Capability                                | Status                            | Evidence                                                                                                    |
+| ----------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Self-improvement loop, archive, selection | Implemented and tested            | End-to-end tests with scripted models                                                                       |
+| Meta prompt evolution                     | Implemented and tested            | Bandit, validation and step tests                                                                           |
+| Benchmark (28 tasks)                      | Verified                          | Starters fail, references pass, each fix is individually required                                           |
+| Statistics and experiment protocol        | Implemented and tested            | Bootstrap, exact sign-flip test, underpowered guard, trials during search                                   |
+| Evaluator hardening                       | Implemented and attacked in tests | Forgery by thread, stdout, fd guessing, framework patching and early exit all fail closed                   |
+| Token metering and key isolation          | Implemented and tested end to end | A real worker runs through the meter with no key in its environment; budgets enforced there                 |
+| Integrity scan and signed records         | Implemented and tested            | Hard and review tiers; genomes scanned before they run; tamper evidence, not prevention                     |
+| SWE-bench adapter                         | Verified on a synthetic instance  | Real git repository in SWE-bench format; real SWE-bench data not tried                                      |
+| Container stack                           | Partly verified                   | Compose and Dockerfile validated, proxy tested against a real squid; image never built here                 |
+| Live dashboard refresh                    | Verified in a simulated browser   | Real server plus jsdom; a real Chromium script is provided but was not run                                  |
+| Runs against a live model                 | Tooling ready, not run            | `singularis live` gives a cost ceiling, a preflight and a summary; needs your API key; no result is claimed |
 
 ## How the loop works
 
@@ -71,7 +73,7 @@ This repository ships infrastructure and verified tooling. It does not ship resu
 | Path                                  | Purpose                                                                                         |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `code/ai_models/`                     | Model side: `llm.py` (providers, budgets) and `genome/` (the evolving agent)                    |
-| `code/backend/core/`                  | Sandbox, worker, loader, trace, logging, isolation checks                                       |
+| `code/backend/core/`                  | Sandbox, worker, loader, trace, metering proxy, logging, isolation checks                       |
 | `code/backend/evaluation/`            | Evaluator, task suites, repository tasks, SWE-bench adapter, runner, statistics, integrity scan |
 | `code/backend/evolution/`             | Archive, evolution loop, meta prompts, experiments, signing, manifest, report, live server      |
 | `code/backend/cli.py`                 | The `singularis` command                                                                        |
@@ -91,8 +93,10 @@ scripts/setup.sh                        # virtual environment and editable insta
 source .venv/bin/activate
 export ANTHROPIC_API_KEY=...            # not needed for tests or scripted runs
 
-scripts/run_tests.sh                    # 139 tests
+scripts/run_tests.sh                    # 217 tests
 scripts/run_baseline.sh                 # validate the benchmark, score the seed genome
+scripts/run_live.sh --dry-run           # worst-case cost of a small real-model run (no API calls)
+scripts/run_live.sh                     # that run: preflight, token cap, runs/live/LIVE_SUMMARY.md
 scripts/run_evolution.sh runs/exp1 5    # 5 self-improvement iterations, then write the report
 scripts/serve.sh runs/exp1              # live dashboard at http://127.0.0.1:8765/
 scripts/run_experiment.sh runs/exp 5 3  # arms versus the seed, 3 trials per task
@@ -103,6 +107,7 @@ scripts/run_experiment.sh runs/exp 5 3  # arms versus the seed, 3 trials per tas
 | `scripts/setup.sh`                 | Create `.venv` and install with the Anthropic client and pytest     |
 | `scripts/run_tests.sh`             | Run the test suite (arguments pass through to pytest)               |
 | `scripts/run_baseline.sh`          | Validate the suite, then score the seed on train and held-out       |
+| `scripts/run_live.sh`              | Small real-model run with a cost ceiling and an automatic summary   |
 | `scripts/run_evolution.sh`         | Run the evolution loop, then write `report.json`                    |
 | `scripts/run_experiment.sh`        | Run the seed versus arms experiment, then verify signed records     |
 | `scripts/serve.sh`                 | Start the live dashboard on localhost                               |
@@ -163,17 +168,17 @@ One workflow, `.github/workflows/cicd.yml`, runs on every push and pull request.
 
 ## Design decisions
 
-| Decision                   | Why                                               | Enforced by                                                                |
-| -------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------- |
-| Frozen evaluator           | The agent must not be able to edit what judges it | Hidden tests are written after the agent finishes, into a separate copy    |
-| Three splits               | Selection overfits the train split                | Held-out is never selected on; fresh is evaluated only in final comparison |
-| Budgets outside the genome | The agent must not raise its own limits           | Token and call limits wrap the model client; wall clock kill backs them up |
-| Open-ended archive         | A temporary regression can unlock a later gain    | Every valid child is kept; parent choice favors rarely extended branches   |
-| Cost-aware fitness         | Efficiency should be able to evolve               | `fitness = mean_score - 0.05 * min(1, mean_tokens / token_cap)`            |
-| Statistics over anecdotes  | One lucky run proves nothing                      | Repeated trials, bootstrap intervals, paired comparison against the seed   |
-| Tamper scan                | Reward hacking is the main failure mode           | AST scan of agent-written code, strict by default                          |
-| Signed records             | Results must not change silently                  | HMAC over genome hash, scores and result files                             |
-| Human gate                 | Evolved code is unreviewed code                   | Nothing leaves the archive without `export` and a confirmation             |
+| Decision                   | Why                                               | Enforced by                                                                          |
+| -------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Frozen evaluator           | The agent must not be able to edit what judges it | Hidden tests are written after the agent finishes, into a separate copy              |
+| Three splits               | Selection overfits the train split                | Held-out is never selected on; fresh is evaluated only in final comparison           |
+| Budgets outside the genome | The agent must not raise its own limits           | The metering proxy counts tokens and refuses calls; the key never reaches the worker |
+| Open-ended archive         | A temporary regression can unlock a later gain    | Every valid child is kept; parent choice favors rarely extended branches             |
+| Cost-aware fitness         | Efficiency should be able to evolve               | `fitness = mean_score - 0.05 * min(1, mean_tokens / token_cap)`                      |
+| Statistics over anecdotes  | One lucky run proves nothing                      | Repeated trials, bootstrap plus sign-flip test, no verdict below 8 tasks             |
+| Tamper scan                | Reward hacking is the main failure mode           | Two-tier AST scan of solutions and genomes; only hard findings score zero            |
+| Signed records             | Results must not change silently                  | HMAC over genome hash, scores and result files                                       |
+| Human gate                 | Evolved code is unreviewed code                   | Nothing leaves the archive without `export` and a confirmation                       |
 
 ## Safety summary
 
@@ -181,7 +186,9 @@ One workflow, `.github/workflows/cicd.yml`, runs on every push and pull request.
 | ----------------- | ------------------------------------------------------------------------ | --------------------------------------------- |
 | Process sandbox   | Runaway CPU, memory, file size, output; path escapes; leaked environment | Basic. Not a security boundary                |
 | Genome validation | A child that breaks the interface, adds odd files, or fails to import    | Strong for what it checks                     |
-| Integrity scan    | Casual evaluator tampering                                               | Heuristic. Obfuscated code can evade it       |
+| Evaluator channel | Forged or hidden verdicts from solution code                             | Strong against forgery; see docs/SAFETY.md    |
+| Metering proxy    | Budget tampering, token under-reporting, API key theft by the genome     | Strong for the key and the counts             |
+| Integrity scan    | Evaluator tampering by solutions and genomes                             | Heuristic. Obfuscated code can evade it       |
 | Signed records    | After-the-fact edits to stored results                                   | Tamper evidence only                          |
 | Container stack   | Network access and host damage from agent code                           | Strong if verified on your machine; see below |
 
@@ -189,15 +196,15 @@ Read [docs/SAFETY.md](docs/SAFETY.md) before running experiments with a real API
 
 ## Limitations
 
-| Limitation                                                       | Consequence                                                                                         |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| No live-model run has happened                                   | Cost per iteration, how often children pass validation, and whether fitness improves are unmeasured |
-| Process-level isolation is not a security boundary               | Use the container stack or a VM for real experiments                                                |
-| Evaluator and candidate code share an interpreter                | A hostile solution could try to forge a result; the scan and signatures detect only some attempts   |
-| Container stack was not built in the authoring environment       | Run `scripts/verify_docker.sh` once on a machine with Docker                                        |
-| SWE-bench support is pytest only and needs your own environments | Start with a few instances from one pure Python repository                                          |
-| Built-in tasks can saturate with a strong model                  | Use the issue tasks and SWE-bench style tasks for meaningful comparisons                            |
-| Self-modification covers prompts, tools and loop logic           | Weight updates are out of scope                                                                     |
+| Limitation                                                       | Consequence                                                                                                                                            |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| No live-model run has happened                                   | Cost per iteration, how often children pass validation, and whether fitness improves are unmeasured                                                    |
+| Process-level isolation is not a security boundary               | Use the container stack or a VM for real experiments                                                                                                   |
+| Candidate code runs in the same interpreter as the tests         | Result forgery is closed (private channel, canaries); a solution that deliberately patches the test framework is made hard and visible, not impossible |
+| Container stack was not built in the authoring environment       | Run `scripts/verify_docker.sh` once on a machine with Docker                                                                                           |
+| SWE-bench support is pytest only and needs your own environments | Start with a few instances from one pure Python repository                                                                                             |
+| Built-in tasks can saturate with a strong model                  | Use the issue tasks and SWE-bench style tasks for meaningful comparisons                                                                               |
+| Self-modification covers prompts, tools and loop logic           | Weight updates are out of scope                                                                                                                        |
 
 ## Documentation
 
@@ -205,9 +212,9 @@ Read [docs/SAFETY.md](docs/SAFETY.md) before running experiments with a real API
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | Trust boundaries, modules, contracts, data flow, archive layout                             |
 | [docs/CLI.md](docs/CLI.md)                           | Every command and option with defaults                                                      |
-| [docs/BENCHMARKS.md](docs/BENCHMARKS.md)             | Task tracks, all 20 tasks, SWE-bench workflow, limits                                       |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md)             | Task tracks, all 28 tasks, SWE-bench workflow, limits                                       |
 | [docs/SAFETY.md](docs/SAFETY.md)                     | Threat model, controls, container stack, verification status                                |
-| [docs/TESTING.md](docs/TESTING.md)                   | What the 139 tests cover and how to run them                                                |
+| [docs/TESTING.md](docs/TESTING.md)                   | What the 217 tests cover and how to run them                                                |
 | [docs/CICD.md](docs/CICD.md)                         | The GitHub Actions workflow: jobs, setup, local reproduction, releases, verification status |
 | [docs/ROADMAP.md](docs/ROADMAP.md)                   | What is implemented and what remains                                                        |
 | [code/README.md](code/README.md)                     | Source layout and import rules                                                              |

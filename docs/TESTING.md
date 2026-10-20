@@ -1,6 +1,6 @@
 # Testing
 
-139 automated tests run in about 40 seconds. None of them need an API key or network access. Model behavior is
+217 automated tests (plus 2 that need node) run in about a minute. None of them need an API key or network access. Model behavior is
 replaced by scripted models that replay fixed tool calls, so the loop, the evaluator and the containment logic are
 tested for real while the model itself is not.
 
@@ -12,7 +12,7 @@ tested for real while the model itself is not.
 | One file           | `python -m pytest code/backend/tests/test_evolve.py`                                       |
 | One test           | `python -m pytest code/backend/tests/test_evolve.py -k valid_child`                        |
 | Dashboard tests    | `cd frontend && npm install`, then `python -m pytest code/backend/tests/test_frontend.py`  |
-| Real browser check | `scripts/test_frontend_browser.sh` (installs Playwright and Chromium; not part of the 139) |
+| Real browser check | `scripts/test_frontend_browser.sh` (installs Playwright and Chromium; not part of the 217) |
 
 Configuration lives in `pytest.ini` at the repository root (`testpaths = code`, `pythonpath = code`, prepend import mode).
 Shared helpers are in `code/testkit.py` and fixtures in `code/conftest.py`; the fixtures send logs to a temporary
@@ -33,20 +33,23 @@ directory so tests never write to `code/logs`.
 | File                          | Tests | Covers                                                                                                                                                                            |
 | ----------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `test_archive.py`             | 5     | Ids, lineage, best agent, parent selection, update guard, empty archive                                                                                                           |
-| `test_evolve.py`              | 5     | A full self-modification step with a valid child; a child that breaks the contract is rejected; genome file policy; import and contract validation; diffs                         |
+| `test_evolve.py`              | 7     | A full self-modification step with a valid child; a child that breaks the contract is rejected; genome file policy; import and contract validation; diffs                         |
+| `test_evaluator_hardening.py` | 17    | Six forgery attacks fail closed, canaries catch framework patching, tests not on disk, timeouts discarded, repository summary parsing and conftest reset                          |
 | `test_experiment.py`          | 3     | Arms versus seed with confidence intervals; unknown arm; report wording for reliable gains                                                                                        |
 | `test_frontend.py`            | 2     | Dashboard render checks including hostile input; live refresh against the real server (update, selection kept, server loss, recovery)                                             |
-| `test_integrity.py`           | 13    | Every tamper pattern, harmless code, strict, warn and off modes                                                                                                                   |
+| `test_integrity.py`           | 49    | Every tamper pattern, harmless code, strict, warn and off modes                                                                                                                   |
 | `test_isolation.py`           | 11    | Strict and permissive proxies, unreachable proxy, open and closed routes, scrubbed tool environment, leaky configuration, mount and status parsing, exit codes                    |
+| `test_live.py`                | 6     | Cost ceiling, preflight failures, dry run, summary content                                                                                                                        |
 | `test_meta.py`                | 7     | Template validation, UCB choice, duplicates, persistence, reward recording, invalid child penalty, meta prompt evolution                                                          |
+| `test_meter.py`               | 15    | Token counting, key isolation, budgets, run separation, `/proc` protection, a real worker run end to end, token under-reporting overruled                                         |
 | `test_report_and_cli.py`      | 5     | Report content, `report`, `suite` and `lineage` commands, log file                                                                                                                |
 | `test_runner_paths.py`        | 3     | Relative scripted model paths resolved before a worker starts, other specs untouched, a relative path working end to end                                                          |
 | `test_sandbox.py`             | 13    | Path confinement, symlink escape, timeouts, output clipping, scrubbed environment, config round trip                                                                              |
 | `test_search.py`              | 8     | Failure classes and clusters, greedy selection, unknown strategy, focus rotation, greedy evolver, usage and manifest files                                                        |
 | `test_serve.py`               | 4     | Live report, index and health routes, 404s and traversal attempts, remote bind refused                                                                                            |
 | `test_signing.py`             | 6     | Verification after a run, edited genome, edited results and scores, wrong key, missing signature, `verify` exit codes                                                             |
-| `test_stats.py`               | 6     | Mean, bootstrap interval, determinism, paired comparison, noise not reported as signal                                                                                            |
-| `test_suite.py`               | 14    | All tasks validate, splits and tracks, directory loader, issue task guarantees                                                                                                    |
+| `test_stats.py`               | 9     | Mean, bootstrap interval, determinism, paired comparison, noise not reported as signal                                                                                            |
+| `test_suite.py`               | 15    | All tasks validate, splits and tracks, directory loader, issue task guarantees                                                                                                    |
 | `test_swebench.py`            | 12    | Prepare, load, validate, base fails and fix passes, edited tests earn nothing, regressions score 0, scripted agent end to end, CLI, error handling, parsing, splits, relaxed scan |
 | `test_trials_and_manifest.py` | 4     | Repeated trials, manifest contents, change warnings on resume, frozen hash                                                                                                        |
 
@@ -59,7 +62,7 @@ directory so tests never write to `code/logs`.
 | Each required fix in an issue task is individually necessary                        | `test_suite.py::test_every_fix_is_individually_necessary`                              |
 | A child that breaks the interface never enters the archive as valid                 | `test_evolve.py::test_child_that_breaks_the_contract_is_rejected`                      |
 | Editing the tests does not help on repository tasks                                 | `test_swebench.py::test_editing_the_tests_does_not_help`                               |
-| A flagged solution scores 0 in strict mode                                          | `test_integrity.py::test_strict_mode_zeroes_a_flagged_solution`                        |
+| A solution with a hard finding scores 0 in strict mode                              | `test_integrity.py::test_strict_mode_zeroes_a_flagged_solution`                        |
 | Tampering with a stored genome or score is detected                                 | `test_signing.py`                                                                      |
 | A relative scripted model path works from any directory                             | `test_runner_paths.py::test_a_relative_scripted_model_works_end_to_end`                |
 | The dashboard keeps your selection across refreshes and recovers from a lost server | `test_frontend.py::test_live_refresh_follows_the_archive_keeps_selection_and_recovers` |
