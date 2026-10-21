@@ -157,8 +157,6 @@ Details, task tables and instructions for running real SWE-bench data are in
 
 ## Continuous integration
 
-One workflow, `.github/workflows/cicd.yml`, runs on every push and pull request. Details are in [docs/CICD.md](docs/CICD.md).
-
 | Stage                | Jobs                                                                                                                      | Trigger               |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------- |
 | Checks               | `static`, `test` (Python 3.10 to 3.13), `frontend`, `smoke`, `proxy-policy`, `docker-stack`, `build`, `browser`, `codeql` | Push and pull request |
@@ -196,18 +194,16 @@ Read [docs/SAFETY.md](docs/SAFETY.md) before running experiments with a real API
 
 ## Documentation
 
-| Document                                             | Contents                                                                                    |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | Trust boundaries, modules, contracts, data flow, archive layout                             |
-| [docs/CLI.md](docs/CLI.md)                           | Every command and option with defaults                                                      |
-| [docs/BENCHMARKS.md](docs/BENCHMARKS.md)             | Task tracks, all 28 tasks, SWE-bench workflow, limits                                       |
-| [docs/SAFETY.md](docs/SAFETY.md)                     | Threat model, controls, container stack, verification status                                |
-| [docs/TESTING.md](docs/TESTING.md)                   | What the 217 tests cover and how to run them                                                |
-| [docs/CICD.md](docs/CICD.md)                         | The GitHub Actions workflow: jobs, setup, local reproduction, releases, verification status |
-| [docs/ROADMAP.md](docs/ROADMAP.md)                   | What is implemented and what remains                                                        |
-| [code/README.md](code/README.md)                     | Source layout and import rules                                                              |
-| [frontend/README.md](frontend/README.md)             | The dashboard and its tests                                                                 |
-| [infrastructure/README.md](infrastructure/README.md) | The container stack files                                                                   |
+| Document                                             | Contents                                                        |
+| ---------------------------------------------------- | --------------------------------------------------------------- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | Trust boundaries, modules, contracts, data flow, archive layout |
+| [docs/CLI.md](docs/CLI.md)                           | Every command and option with defaults                          |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md)             | Task tracks, all 28 tasks, SWE-bench workflow, limits           |
+| [docs/SAFETY.md](docs/SAFETY.md)                     | Threat model, controls, container stack, verification status    |
+| [docs/TESTING.md](docs/TESTING.md)                   | What the 217 tests cover and how to run them                    |
+| [code/README.md](code/README.md)                     | Source layout and import rules                                  |
+| [frontend/README.md](frontend/README.md)             | The dashboard and its tests                                     |
+| [infrastructure/README.md](infrastructure/README.md) | The container stack files                                       |
 
 ## License
 
