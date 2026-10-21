@@ -194,18 +194,6 @@ One workflow, `.github/workflows/cicd.yml`, runs on every push and pull request.
 
 Read [docs/SAFETY.md](docs/SAFETY.md) before running experiments with a real API key.
 
-## Limitations
-
-| Limitation                                                       | Consequence                                                                                                                                            |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| No live-model run has happened                                   | Cost per iteration, how often children pass validation, and whether fitness improves are unmeasured                                                    |
-| Process-level isolation is not a security boundary               | Use the container stack or a VM for real experiments                                                                                                   |
-| Candidate code runs in the same interpreter as the tests         | Result forgery is closed (private channel, canaries); a solution that deliberately patches the test framework is made hard and visible, not impossible |
-| Container stack was not built in the authoring environment       | Run `scripts/verify_docker.sh` once on a machine with Docker                                                                                           |
-| SWE-bench support is pytest only and needs your own environments | Start with a few instances from one pure Python repository                                                                                             |
-| Built-in tasks can saturate with a strong model                  | Use the issue tasks and SWE-bench style tasks for meaningful comparisons                                                                               |
-| Self-modification covers prompts, tools and loop logic           | Weight updates are out of scope                                                                                                                        |
-
 ## Documentation
 
 | Document                                             | Contents                                                                                    |
