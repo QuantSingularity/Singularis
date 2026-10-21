@@ -36,7 +36,7 @@ This repository ships infrastructure and verified tooling. It does not ship resu
 | Benchmark (28 tasks)                      | Verified                          | Starters fail, references pass, each fix is individually required                                           |
 | Statistics and experiment protocol        | Implemented and tested            | Bootstrap, exact sign-flip test, underpowered guard, trials during search                                   |
 | Evaluator hardening                       | Implemented and attacked in tests | Forgery by thread, stdout, fd guessing, framework patching and early exit all fail closed                   |
-| Token metering and key isolation          | Implemented and tested end to end | A real worker runs through the meter with no key in its environment; budgets enforced there                 |
+| Token metering and key isolation          | Implemented and tested end to end | A real worker runs through the meter with no key in its environment; token counts are recorded there        |
 | Integrity scan and signed records         | Implemented and tested            | Hard and review tiers; genomes scanned before they run; tamper evidence, not prevention                     |
 | SWE-bench adapter                         | Verified on a synthetic instance  | Real git repository in SWE-bench format; real SWE-bench data not tried                                      |
 | Container stack                           | Partly verified                   | Compose and Dockerfile validated, proxy tested against a real squid; image never built here                 |
@@ -70,21 +70,21 @@ This repository ships infrastructure and verified tooling. It does not ship resu
 
 ## Repository layout
 
-| Path                                  | Purpose                                                                                         |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `code/ai_models/`                     | Model side: `llm.py` (providers, budgets) and `genome/` (the evolving agent)                    |
-| `code/backend/core/`                  | Sandbox, worker, loader, trace, metering proxy, logging, isolation checks                       |
-| `code/backend/evaluation/`            | Evaluator, task suites, repository tasks, SWE-bench adapter, runner, statistics, integrity scan |
-| `code/backend/evolution/`             | Archive, evolution loop, meta prompts, experiments, signing, manifest, report, live server      |
-| `code/backend/cli.py`                 | The `singularis` command                                                                        |
-| `code/testkit.py`, `code/conftest.py` | Shared test helpers and fixtures                                                                |
-| `code/logs/`                          | Runtime logs (`singularis.log`)                                                                 |
-| `docs/`                               | Architecture, CLI, benchmarks, safety, testing, roadmap                                         |
-| `frontend/`                           | Single-file lineage dashboard, its tests, and sample data                                       |
-| `infrastructure/`                     | Dockerfile, compose stack, egress proxy config, smoke fixture                                   |
-| `scripts/`                            | Helper scripts for setup, runs, experiments, Docker and report generation                       |
-| `.github/workflows/cicd.yml`          | CI/CD: 14 jobs covering checks, tests, packaging, container verification and releases           |
-| `pytest.ini`, `pyproject.toml`        | Test and packaging configuration                                                                |
+| Path                                  | Purpose                                                                                                                |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `code/ai_models/`                     | Model side: `llm.py` (providers, budgets) and `genome/` (the evolving agent)                                           |
+| `code/backend/core/`                  | Sandbox, worker, loader, trace, metering proxy, logging, isolation checks                                              |
+| `code/backend/evaluation/`            | Evaluator, task suites, repository tasks, SWE-bench adapter, runner, statistics, integrity scan                        |
+| `code/backend/evolution/`             | Archive, evolution loop, meta prompts, experiments, signing, manifest, report, live server                             |
+| `code/backend/cli.py`                 | The `singularis` command                                                                                               |
+| `code/testkit.py`, `code/conftest.py` | Shared test helpers and fixtures                                                                                       |
+| `code/logs/`                          | Runtime logs (`singularis.log`)                                                                                        |
+| `docs/`                               | Architecture, CLI, benchmarks, safety, testing                                                                         |
+| `frontend/`                           | Single-file lineage dashboard, its tests, and sample data                                                              |
+| `infrastructure/`                     | Dockerfile, compose stack, egress proxy config, smoke fixture                                                          |
+| `scripts/`                            | Helper scripts for setup, runs, experiments, Docker and report generation                                              |
+| `.github/workflows/cicd.yml`          | CI/CD: 8 jobs covering static checks, tests, dashboard, smoke run, egress policy, packaging and a manual live baseline |
+| `pytest.ini`, `pyproject.toml`        | Test and packaging configuration                                                                                       |
 
 ## Quickstart
 
@@ -157,12 +157,16 @@ Details, task tables and instructions for running real SWE-bench data are in
 
 ## Continuous integration
 
-| Stage                | Jobs                                                                                                                      | Trigger               |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| Checks               | `static`, `test` (Python 3.10 to 3.13), `frontend`, `smoke`, `proxy-policy`, `docker-stack`, `build`, `browser`, `codeql` | Push and pull request |
-| Gate                 | `ci-passed`, the single required check                                                                                    | Push and pull request |
-| Scheduled and manual | `audit`, `live-baseline` (paid, manual)                                                                                   | Weekly, manual        |
-| Delivery             | `release`, `docker-publish`                                                                                               | Tags named `v*`       |
+The workflow in `.github/workflows/cicd.yml` defines eight jobs.
+
+| Stage      | Jobs                                                                                                                           | Trigger                         |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------- |
+| Static     | `static`: Python syntax and lint rules, shell scripts, Dockerfile, compose file, workflow syntax, documentation rules          | Push and pull request to `main` |
+| Tests      | `test` (Python 3.10 to 3.13, with coverage), `frontend` (jsdom plus the real server)                                           | Push and pull request to `main` |
+| End to end | `smoke` (scripted eval, evolve, verify, report and live server), `proxy-policy` (egress allowlist tested against a real squid) | Push and pull request to `main` |
+| Packaging  | `build` (wheel and sdist, installed into a clean environment)                                                                  | Push and pull request to `main` |
+| Browser    | `browser` (dashboard in real Chromium, informational)                                                                          | Push and pull request to `main` |
+| Manual     | `live-baseline` (small real-model baseline, uses the `ANTHROPIC_API_KEY` secret and costs money)                               | Manual dispatch                 |
 
 ## Design decisions
 
@@ -180,15 +184,15 @@ Details, task tables and instructions for running real SWE-bench data are in
 
 ## Safety summary
 
-| Layer             | Protects against                                                         | Strength                                      |
-| ----------------- | ------------------------------------------------------------------------ | --------------------------------------------- |
-| Process sandbox   | Runaway CPU, memory, file size, output; path escapes; leaked environment | Basic. Not a security boundary                |
-| Genome validation | A child that breaks the interface, adds odd files, or fails to import    | Strong for what it checks                     |
-| Evaluator channel | Forged or hidden verdicts from solution code                             | Strong against forgery; see docs/SAFETY.md    |
-| Metering proxy    | Budget tampering, token under-reporting, API key theft by the genome     | Strong for the key and the counts             |
-| Integrity scan    | Evaluator tampering by solutions and genomes                             | Heuristic. Obfuscated code can evade it       |
-| Signed records    | After-the-fact edits to stored results                                   | Tamper evidence only                          |
-| Container stack   | Network access and host damage from agent code                           | Strong if verified on your machine; see below |
+| Layer             | Protects against                                                         | Role                                                                               |
+| ----------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Process sandbox   | Runaway CPU, memory, file size, output; path escapes; leaked environment | Basic resource limits and a scrubbed environment                                   |
+| Genome validation | A child that breaks the interface, adds odd files, or fails to import    | Interface and file policy checks                                                   |
+| Evaluator channel | Forged or hidden verdicts from solution code                             | Private result channel, per-run nonce and canary tests; see docs/SAFETY.md         |
+| Metering proxy    | API key theft by the genome, token under-reporting                       | Keeps the key out of the worker and counts tokens outside the genome               |
+| Integrity scan    | Evaluator tampering by solutions and genomes                             | Heuristic AST scan with hard and review tiers                                      |
+| Signed records    | After-the-fact edits to stored results                                   | Tamper evidence                                                                    |
+| Container stack   | Network access and host damage from agent code                           | Network-isolated stack, verified on your machine with `singularis isolation-check` |
 
 Read [docs/SAFETY.md](docs/SAFETY.md) before running experiments with a real API key.
 
@@ -198,7 +202,7 @@ Read [docs/SAFETY.md](docs/SAFETY.md) before running experiments with a real API
 | ---------------------------------------------------- | --------------------------------------------------------------- |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | Trust boundaries, modules, contracts, data flow, archive layout |
 | [docs/CLI.md](docs/CLI.md)                           | Every command and option with defaults                          |
-| [docs/BENCHMARKS.md](docs/BENCHMARKS.md)             | Task tracks, all 28 tasks, SWE-bench workflow, limits           |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md)             | Task tracks, all 28 tasks, SWE-bench workflow                   |
 | [docs/SAFETY.md](docs/SAFETY.md)                     | Threat model, controls, container stack, verification status    |
 | [docs/TESTING.md](docs/TESTING.md)                   | What the 217 tests cover and how to run them                    |
 | [code/README.md](code/README.md)                     | Source layout and import rules                                  |
