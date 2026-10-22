@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ai_models import genome as _genome_pkg
-
 from backend.core.sandbox import SandboxConfig, run_command
 from backend.core.text import clip
 from backend.evaluation.integrity import Findings, scan_genome

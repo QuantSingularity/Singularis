@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 from ai_models.llm import DEFAULT_MODEL
-
 from backend.core.isolation import run_isolation_checks
 from backend.core.logging_config import setup_logging
 from backend.core.sandbox import SandboxConfig

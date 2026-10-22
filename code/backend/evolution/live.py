@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 from ai_models.llm import DEFAULT_MODEL
-
 from backend.core.meter import get_meter, load_api_key
 from backend.evaluation.tasks import Task
 from backend.evolution.archive import Archive
