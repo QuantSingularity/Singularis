@@ -10,7 +10,7 @@ def run(tmp_path, name, **arguments):
 
 def test_edit_file_replaces_exactly_one_occurrence(tmp_path):
     (tmp_path / "a.py").write_text("x = 1\ny = 2\n")
-    output, is_error = run(
+    _output, is_error = run(
         tmp_path, "edit_file", path="a.py", old_str="x = 1", new_str="x = 10"
     )
     assert not is_error and (tmp_path / "a.py").read_text() == "x = 10\ny = 2\n"

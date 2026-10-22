@@ -36,8 +36,9 @@ def solving_script(task: Task = FIZZ) -> list[dict]:
         }
         for rel, content in task.reference.items()
     ]
-    return writes + [
-        {"tool_calls": [{"name": "finish", "arguments": {"summary": "done"}}]}
+    return [
+        *writes,
+        {"tool_calls": [{"name": "finish", "arguments": {"summary": "done"}}]},
     ]
 
 
@@ -94,7 +95,6 @@ NEW_META_TEMPLATE = (
 
 
 def dual_meta_script() -> list[dict]:
-    """Edits the genome prompt (self-modification run) and the meta prompt (meta-prompt run)."""
     return [
         {
             "tool_calls": [

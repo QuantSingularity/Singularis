@@ -15,7 +15,7 @@ CODE_ROOT = Path(__file__).resolve().parents[2]
 
 
 def frozen_code_hash() -> str:
-    """Hash of the frozen engine (backend and the LLM layer). Excludes tests and the mutable genome."""
+    """Hash of the frozen engine (backend and the LLM layer)."""
     files = [
         p
         for p in sorted((CODE_ROOT / "backend").rglob("*.py"))
@@ -53,7 +53,7 @@ def task_fingerprints(tasks: list[Task]) -> dict[str, str]:
 
 
 def write_manifest(root: Path, config, tasks: list[Task]) -> list[str]:
-    """Record how an experiment was run. On resume, report anything that changed since it started."""
+    """Record how an experiment was run."""
     path = Path(root) / "manifest.json"
     current = {
         "frozen_code_sha256": frozen_code_hash(),

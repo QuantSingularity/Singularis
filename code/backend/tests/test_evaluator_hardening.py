@@ -1,5 +1,3 @@
-"""The evaluator must not be forgeable by code it runs, and must fail closed when it is attacked."""
-
 import pytest
 from backend.evaluation.evaluator import evaluate, validate_tasks
 from backend.evaluation.repo_eval import (
@@ -98,9 +96,6 @@ def test_the_builtin_suite_still_validates():
     from backend.evaluation.suite import BUILTIN_TASKS
 
     assert validate_tasks(BUILTIN_TASKS) == []
-
-
-# ---- repository tasks ----------------------------------------------------------------------------
 
 
 def test_only_the_summary_block_speaks_for_a_test():

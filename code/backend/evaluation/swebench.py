@@ -44,7 +44,6 @@ def load_instances(path: Path) -> list[dict]:
 
 
 def assign_split(instance_id: str, ratios: tuple[int, int, int] = (60, 20, 20)) -> str:
-    """Deterministic train/heldout/fresh assignment from the instance id, stable across runs and machines."""
     bucket = int(hashlib.sha256(instance_id.encode()).hexdigest(), 16) % sum(ratios)
     if bucket < ratios[0]:
         return "train"
@@ -71,11 +70,7 @@ def prepare_instance(
     split: str = "auto",
     test_timeout_s: float = 900,
 ) -> Path:
-    """Turn one dataset instance into a task directory the loader understands.
-
-    The checkout at the base commit is stored without its .git directory, so the agent cannot read the history
-    that contains the fix. The cached clone is reused across instances of the same repository.
-    """
+    """Turn one dataset instance into a task directory the loader understands."""
     missing = [f for f in REQUIRED_FIELDS if f not in instance]
     if missing:
         raise SwebenchError(f"instance is missing fields: {', '.join(missing)}")

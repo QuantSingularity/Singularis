@@ -28,7 +28,7 @@ def test_preflight_rejects_a_scripted_model():
 def test_preflight_reports_a_missing_key_and_sdk(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY_FILE", raising=False)
-    monkeypatch.setitem(sys.modules, "anthropic", None)  # makes `import anthropic` fail
+    monkeypatch.setitem(sys.modules, "anthropic", None)
     problems, _ = preflight("anthropic:some-model")
     assert any("API key" in p for p in problems) and any("SDK" in p for p in problems)
 

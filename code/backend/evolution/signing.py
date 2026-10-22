@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -23,10 +24,8 @@ def _key(root: Path) -> bytes:
     path = Path(root) / "signing.key"
     if not path.exists():
         path.write_text(secrets.token_hex(32))
-        try:
+        with contextlib.suppress(OSError):
             os.chmod(path, 0o600)
-        except OSError:
-            pass
     return path.read_text().strip().encode()
 
 

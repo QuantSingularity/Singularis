@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Run the recursive self-improvement loop (resumable) and write the report for the frontend.
-# Usage: scripts/run_evolution.sh [root] [iterations] [extra singularis evolve arguments]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

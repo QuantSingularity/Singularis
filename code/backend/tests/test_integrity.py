@@ -65,7 +65,7 @@ REVIEW = [
 def test_tampering_patterns_are_hard_findings(tmp_path, code, expected):
     (tmp_path / "s.py").write_text(code)
     assert any(expected in flag for flag in scan_findings(tmp_path).hard)
-    assert scan_workspace(tmp_path)  # these are what strict mode scores as zero
+    assert scan_workspace(tmp_path)
 
 
 @pytest.mark.parametrize("code, expected", REVIEW)
@@ -152,8 +152,6 @@ def test_off_mode_does_not_scan(tmp_path, write_script):
     result = run_task(FIZZ, BUILTIN_GENOME, cfg, tmp_path)
     assert result.score == 1.0 and result.integrity_flags == []
 
-
-# ---- genomes are held to a stricter standard ----------------------------------------------------------
 
 GENOME_HARD = [
     (

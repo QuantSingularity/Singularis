@@ -1,5 +1,4 @@
 "use strict";
-// Renders the sample report in a simulated browser and checks structure, safety, and error handling.
 const assert = require("node:assert");
 const fs = require("fs");
 const path = require("path");

@@ -13,36 +13,37 @@ and only that directory is read back.
 
 ## Modules
 
-| Module                                                               | Role                                                                                                     |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `ai_models/llm.py`                                                   | `LLMClient` protocol, `AnthropicClient`, `ScriptedClient`, `BudgetedClient`                              |
-| `ai_models/genome/agent.py`                                          | `solve()`: the tool-use loop with context compaction                                                     |
-| `ai_models/genome/tools.py`                                          | Seven tools: `list_files`, `read_file`, `search_text`, `write_file`, `edit_file`, `run_python`, `finish` |
-| `ai_models/genome/prompts.py`                                        | System prompt                                                                                            |
-| `backend/core/sandbox.py`                                            | Subprocess runner with rlimits, scrubbed environment, workspace path confinement                         |
-| `backend/core/worker.py`                                             | Process entry point: load a genome, apply the budget, run `solve()`, write the trace                     |
-| `backend/core/loader.py`                                             | Load a genome by path, check the interface contract                                                      |
-| `backend/core/trace.py`                                              | `RunTrace`, `Step`, `ToolRecord`                                                                         |
-| `backend/core/isolation.py`                                          | Checks behind `singularis isolation-check`                                                               |
-| `backend/core/logging_config.py`                                     | Console and file logging                                                                                 |
-| `backend/evaluation/evaluator.py`                                    | Hidden test execution for function tasks, suite validation                                               |
-| `backend/evaluation/repo_eval.py`                                    | Repository evaluation: reset tests, apply patch, run pytest, score                                       |
-| `backend/evaluation/swebench.py`                                     | SWE-bench dataset to task directories                                                                    |
-| `backend/evaluation/tasks.py`                                        | `Task` model, directory loader, split selection                                                          |
-| `backend/evaluation/suite.py`, `suite_finance.py`, `suite_issues.py` | The 20 built-in tasks                                                                                    |
-| `backend/evaluation/runner.py`                                       | Run a task or suite with trials, integrity enforcement, fitness function                                 |
-| `backend/evaluation/integrity.py`                                    | Two-tier AST scan for evaluator tampering, with a solution profile and a stricter genome profile         |
-| `backend/core/meter.py`                                              | Metering proxy: holds the API key, counts tokens, enforces budgets, hardens the framework process        |
-| `backend/evolution/live.py`                                          | Cost ceiling, preflight call and summary for a small real-model run                                      |
-| `backend/evaluation/stats.py`                                        | Bootstrap intervals and paired comparison                                                                |
-| `backend/evolution/archive.py`                                       | SQLite lineage tree, parent selection strategies                                                         |
-| `backend/evolution/evolve.py`                                        | The loop: diagnose, modify, validate, evaluate, record                                                   |
-| `backend/evolution/meta.py`                                          | Meta prompt variants and the UCB bandit                                                                  |
-| `backend/evolution/experiment.py`                                    | Seed versus arms protocol and report generation                                                          |
-| `backend/evolution/signing.py`                                       | HMAC records                                                                                             |
-| `backend/evolution/manifest.py`                                      | Reproducibility manifest and change detection                                                            |
-| `backend/evolution/report.py`, `serve.py`                            | Archive export and the localhost server                                                                  |
-| `backend/cli.py`                                                     | The `singularis` command                                                                                 |
+| Module                                                               | Role                                                                                                            |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `ai_models/llm.py`                                                   | `LLMClient` protocol, `AnthropicClient`, `ScriptedClient`, `BudgetedClient`                                     |
+| `ai_models/genome/agent.py`                                          | `solve()`: the tool-use loop with context compaction                                                            |
+| `ai_models/genome/tools.py`                                          | Seven tools: `list_files`, `read_file`, `search_text`, `write_file`, `edit_file`, `run_python`, `finish`        |
+| `ai_models/genome/prompts.py`                                        | System prompt                                                                                                   |
+| `backend/core/sandbox.py`                                            | Subprocess runner with rlimits, process cap, optional network namespace, scrubbed environment, path confinement |
+| `backend/core/worker.py`                                             | Process entry point: load a genome, apply the budget, run `solve()`, write the trace                            |
+| `backend/core/loader.py`                                             | Load a genome by path, check the interface contract                                                             |
+| `backend/core/trace.py`                                              | `RunTrace`, `Step`, `ToolRecord`                                                                                |
+| `backend/core/isolation.py`                                          | Checks behind `singularis isolation-check`                                                                      |
+| `backend/core/logging_config.py`                                     | Console and file logging                                                                                        |
+| `backend/evaluation/evaluator.py`                                    | Hidden test execution for function tasks, suite validation                                                      |
+| `backend/evaluation/mirror.py`                                       | Rewrites hidden tests so each one has a randomized mirror that must fail when the real test passes              |
+| `backend/evaluation/repo_eval.py`                                    | Repository evaluation: reset tests, apply patch, run pytest, score                                              |
+| `backend/evaluation/swebench.py`                                     | SWE-bench dataset to task directories                                                                           |
+| `backend/evaluation/tasks.py`                                        | `Task` model, directory loader, split selection                                                                 |
+| `backend/evaluation/suite.py`, `suite_finance.py`, `suite_issues.py` | The 20 built-in tasks                                                                                           |
+| `backend/evaluation/runner.py`                                       | Run a task or suite with trials, integrity enforcement, fitness function                                        |
+| `backend/evaluation/integrity.py`                                    | Two-tier AST scan for evaluator tampering, with a solution profile and a stricter genome profile                |
+| `backend/core/meter.py`                                              | Metering proxy: holds the API key, counts tokens, enforces budgets, hardens the framework process               |
+| `backend/evolution/live.py`                                          | Cost ceiling, preflight call and summary for a small real-model run                                             |
+| `backend/evaluation/stats.py`                                        | Bootstrap intervals and paired comparison                                                                       |
+| `backend/evolution/archive.py`                                       | SQLite lineage tree, parent selection strategies                                                                |
+| `backend/evolution/evolve.py`                                        | The loop: diagnose, modify, validate, evaluate, record                                                          |
+| `backend/evolution/meta.py`                                          | Meta prompt variants and the UCB bandit                                                                         |
+| `backend/evolution/experiment.py`                                    | Seed versus arms protocol and report generation                                                                 |
+| `backend/evolution/signing.py`                                       | HMAC records                                                                                                    |
+| `backend/evolution/manifest.py`                                      | Reproducibility manifest and change detection                                                                   |
+| `backend/evolution/report.py`, `serve.py`                            | Archive export and the localhost server                                                                         |
+| `backend/cli.py`                                                     | The `singularis` command                                                                                        |
 
 ## Genome contract
 
@@ -60,15 +61,15 @@ def solve(task: str, workspace: Path, llm: LLMClient, sandbox: SandboxConfig, ma
 
 ## Running one task
 
-| Step | Action                                                                                                                                                                                                        | Module                         |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| 1    | Create a fresh workspace: starter files, or a copy of the repository checkout without `.git`                                                                                                                  | `runner.py`                    |
-| 2    | Start `python -m backend.core.worker` under rlimits and a wall clock timeout                                                                                                                                  | `runner.py`                    |
-| 3    | The worker loads the genome, wraps the model in a budget, calls `solve()`, writes a JSON trace                                                                                                                | `worker.py`                    |
-| 4    | Crash, timeout or bad return becomes a trace with `genome_error`, `timeout` or `worker_failure`                                                                                                               | `runner.py`                    |
-| 5    | Copy the workspace, send hidden tests on stdin, read the verdict from a private channel and check two canary tests; repository tasks reset conftest and pytest config and parse only the pytest summary block | `evaluator.py`, `repo_eval.py` |
-| 6    | Scan agent-written code for tampering; in strict mode a hard finding zeroes the score, review findings are only recorded                                                                                      | `integrity.py`                 |
-| 7    | Return a `TaskResult` with score, metered tokens, stop reason, hard and review flags                                                                                                                          | `runner.py`                    |
+| Step | Action                                                                                                                                                                                                                                               | Module                         |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| 1    | Create a fresh workspace: starter files, or a copy of the repository checkout without `.git`                                                                                                                                                         | `runner.py`                    |
+| 2    | Start `python -m backend.core.worker` under rlimits and a wall clock timeout                                                                                                                                                                         | `runner.py`                    |
+| 3    | The worker loads the genome, wraps the model in a budget, calls `solve()`, writes a JSON trace                                                                                                                                                       | `worker.py`                    |
+| 4    | Crash, timeout or bad return becomes a trace with `genome_error`, `timeout` or `worker_failure`                                                                                                                                                      | `runner.py`                    |
+| 5    | Copy the workspace, send hidden tests on stdin, read the verdict from a private channel, check two canary tests and that no test and its mirror both pass; repository tasks reset conftest and pytest config and parse only the pytest summary block | `evaluator.py`, `repo_eval.py` |
+| 6    | Scan agent-written code for tampering; in strict mode a hard finding zeroes the score, review findings are only recorded                                                                                                                             | `integrity.py`                 |
+| 7    | Return a `TaskResult` with score, metered tokens, stop reason, hard and review flags                                                                                                                                                                 | `runner.py`                    |
 
 Stop reasons: `finished`, `no_tool_calls`, `max_steps`, `budget`, `llm_error`, `genome_error`, `timeout`, `worker_failure`.
 

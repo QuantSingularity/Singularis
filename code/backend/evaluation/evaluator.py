@@ -11,13 +11,9 @@ from pathlib import Path
 
 from backend.core.sandbox import SandboxConfig, run_command
 from backend.core.text import clip
+from backend.evaluation.mirror import mirror_source
 from backend.evaluation.tasks import Task
 
-# The harness runs in a child process that also imports the (untrusted) solution, so nothing it prints can
-# be trusted. Its verdict travels over a private file descriptor that only this module reads, framed with a
-# per-run nonce. The nonce, the descriptor number and the hidden tests all arrive on stdin, so none of them
-# appears in argv, the environment or the workspace. The harness captures what it needs in locals before the
-# solution is imported and calls os._exit right after reporting, so a background thread cannot speak later.
 _HARNESS = r"""
 import json, os, sys, types, unittest
 
@@ -80,9 +76,6 @@ def _canary_ids(tag: str) -> tuple[str, str]:
 
 
 def _canary_source(tag: str) -> str:
-    """Two tests with known outcomes. Names are random per run and the failing one fails like a real
-    assertion, so a patched framework cannot tell them apart from genuine tests by name or message.
-    """
     return (
         "\n\nimport unittest as _u" + tag + "\n\n\n"
         f"class T{tag}(_u{tag}.TestCase):\n"
@@ -92,7 +85,6 @@ def _canary_source(tag: str) -> str:
 
 
 def _parse_channel(raw: str, nonce: str) -> tuple[dict | None, str]:
-    """Return (record, tamper reason). Anything but exactly one well-formed record is tampering."""
     records, foreign = [], 0
     for line in raw.splitlines():
         if not line.strip():
@@ -114,18 +106,17 @@ def _parse_channel(raw: str, nonce: str) -> tuple[dict | None, str]:
 
 
 def evaluate(task: Task, workspace: Path, timeout_s: float = 60.0) -> EvalOutcome:
-    """Run the task's hidden tests against a copy of the agent's workspace.
-
-    The hidden tests never touch the workspace copy: they are sent to the harness on stdin. The verdict is
-    read from a private channel by this (trusted) process, two canary tests must come back with their known
-    outcomes, and a run that timed out is discarded."""
     if task.kind == "repo":
         from backend.evaluation.repo_eval import evaluate_repo
 
         return evaluate_repo(task, workspace)
     nonce, tag = secrets.token_hex(16), secrets.token_hex(6)
+    mirrored = mirror_source(task.hidden_tests, tag)
     config = SandboxConfig(
-        timeout_s=timeout_s, memory_mb=1024, cpu_s=int(timeout_s) + 5
+        timeout_s=timeout_s,
+        memory_mb=1024,
+        cpu_s=int(timeout_s) + 5,
+        network=False,
     )
     with tempfile.TemporaryDirectory(prefix="sing_eval_") as tmp:
         root = Path(tmp)
@@ -147,7 +138,7 @@ def evaluate(task: Task, workspace: Path, timeout_s: float = 60.0) -> EvalOutcom
                     {
                         "nonce": nonce,
                         "fd": fd,
-                        "tests": task.hidden_tests + _canary_source(tag),
+                        "tests": mirrored.source + _canary_source(tag),
                     }
                 ),
                 pass_fds=(fd,),
@@ -188,11 +179,30 @@ def evaluate(task: Task, workspace: Path, timeout_s: float = 60.0) -> EvalOutcom
             error="evaluator tamper: canary tests were not run faithfully",
             tamper="canary mismatch",
         )
+    for real, mirror in mirrored.pairs.items():
+        real_result, mirror_result = (
+            outcomes.pop(real, None),
+            outcomes.pop(mirror, None),
+        )
+        if real_result is None or mirror_result is None:
+            return EvalOutcome(
+                passed=0,
+                total=1,
+                error="evaluator tamper: mirror tests missing",
+                tamper="mirror missing",
+            )
+        if real_result == 1 and mirror_result == 1:
+            return EvalOutcome(
+                passed=0,
+                total=1,
+                error="evaluator tamper: a test and its mirror both passed",
+                tamper="mirror mismatch",
+            )
+        outcomes[real] = real_result
     return EvalOutcome(sum(outcomes.values()), len(outcomes), "")
 
 
 def validate_tasks(tasks: list[Task]) -> list[str]:
-    """Check that every task fails with its starter files and passes with its reference solution."""
     problems: list[str] = []
     for task in tasks:
         if task.kind == "repo":
@@ -225,7 +235,6 @@ def validate_tasks(tasks: list[Task]) -> list[str]:
 
 
 def _validate_repo_task(task: Task) -> list[str]:
-    """A repository task is sound when the base state is unresolved and the gold patch resolves it."""
     from backend.evaluation.repo_eval import IGNORED, apply_patch
 
     if not task.gold_patch:
@@ -241,7 +250,7 @@ def _validate_repo_task(task: Task) -> list[str]:
             )
         error = apply_patch(workspace, task.gold_patch)
         if error:
-            return problems + [f"{task.id}: gold patch did not apply: {error}"]
+            return [*problems, f"{task.id}: gold patch did not apply: {error}"]
         fixed = evaluate(task, workspace)
         if fixed.score < 1.0:
             problems.append(

@@ -11,8 +11,9 @@ def trace_of(tmp_path):
 
 def test_scripted_agent_solves_task_end_to_end(tmp_path, write_script):
     steps = [
-        {"text": "plan", "tool_calls": [{"name": "list_files", "arguments": {}}]}
-    ] + solving_script()
+        {"text": "plan", "tool_calls": [{"name": "list_files", "arguments": {}}]},
+        *solving_script(),
+    ]
     steps.insert(
         -1,
         {

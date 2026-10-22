@@ -15,19 +15,13 @@ RESULT_LINE = re.compile(
     r"^(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS) (.+)$", re.MULTILINE
 )
 IGNORED = shutil.ignore_patterns("__pycache__", ".git", ".pytest_cache")
-# Files that change how pytest collects, runs and reports. An agent's edits to them are discarded before
-# judging, because a conftest hook can turn failures into passes without touching the code under test.
 PYTEST_CONTROL_FILES = ("conftest.py", "pytest.ini", "tox.ini")
 SUMMARY_HEADER = "short test summary info"
 FOOTER = re.compile(r"^=*\s*\d+ .*\bin [\d.]+s\b.*$")
 
 
 def summary_section(output: str) -> str:
-    """The block pytest prints under 'short test summary info', and nothing around it.
-
-    Captured stdout of individual tests appears earlier in `-rA` output and anything printed after the
-    footer line comes from code running after pytest finished, so neither is allowed to speak for a test.
-    """
+    """The block pytest prints under 'short test summary info', and nothing around it."""
     if SUMMARY_HEADER not in output:
         return ""
     lines = output.rsplit(SUMMARY_HEADER, 1)[1].splitlines()[1:]
@@ -40,7 +34,6 @@ def summary_section(output: str) -> str:
 
 
 def reset_pytest_control_files(workspace: Path, base: Path) -> None:
-    """Put every conftest.py / pytest.ini / tox.ini back to the base state (deleting ones the agent added)."""
 
     def control_files(root: Path) -> set[str]:
         found = set()
@@ -68,7 +61,7 @@ def patch_paths(patch: str) -> list[str]:
 
 
 def apply_patch(directory: Path, patch: str) -> str | None:
-    """Apply a git-format patch to a directory (a repository is not required). Returns an error or None."""
+    """Apply a git-format patch to a directory (a repository is not required)."""
     if shutil.which("git") is None:
         return "git is required to apply patches"
     with tempfile.TemporaryDirectory(prefix="sing_patch_") as tmp:
@@ -100,10 +93,6 @@ def parse_pytest_results(output: str) -> dict[str, str]:
 
 
 def prepare_eval_dir(task: Task, workspace: Path, target: Path) -> str | None:
-    """Copy the agent's result, reset the test files the patch touches to the base state, then apply the patch.
-
-    Resetting first means the agent cannot pass by editing the tests it will be judged on.
-    """
     shutil.copytree(workspace, target, symlinks=True, ignore=IGNORED)
     base = Path(task.repo_dir)
     reset_pytest_control_files(target, base)
@@ -135,6 +124,7 @@ def evaluate_repo(task: Task, workspace: Path):
             memory_mb=4096,
             cpu_s=int(task.test_timeout_s) + 30,
             max_output_chars=2_000_000,
+            network=False,
         )
         result = run_command(
             [

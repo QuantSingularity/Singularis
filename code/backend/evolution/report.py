@@ -15,7 +15,6 @@ def _read_json(path: Path):
 
 
 def build_report(root: Path) -> dict:
-    """Serialize an archive (agents, scores, diffs, per task results) for the frontend viewer."""
     archive = Archive(root)
     agents = []
     for record in archive.all():

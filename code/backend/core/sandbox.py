@@ -1,15 +1,33 @@
 from __future__ import annotations
 
+import functools
 import json
 import os
+import shutil
 import signal
 import subprocess
+import sys
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Sequence
 
 from backend.core.text import clip
+
+_LAUNCHER = (
+    "import json, os, sys\n"
+    "limits = json.loads(sys.argv[1])\n"
+    "try:\n"
+    "    import resource\n"
+    "    for name, value in limits.items():\n"
+    "        try:\n"
+    "            resource.setrlimit(getattr(resource, name), (value, value))\n"
+    "        except (ValueError, OSError, AttributeError):\n"
+    "            pass\n"
+    "except ImportError:\n"
+    "    pass\n"
+    "os.execvp(sys.argv[2], sys.argv[2:])\n"
+)
 
 
 class SandboxViolation(Exception):
@@ -23,6 +41,8 @@ class SandboxConfig:
     cpu_s: int = 60
     max_file_mb: int = 64
     max_output_chars: int = 20_000
+    max_procs: int = 512
+    network: bool = True
     env: dict[str, str] = field(default_factory=dict)
 
     def to_json(self) -> str:
@@ -52,22 +72,38 @@ def resolve_in_workspace(root: Path, relative: str) -> Path:
     return candidate
 
 
-def _preexec(config: SandboxConfig):
-    def apply() -> None:
-        import resource
+@functools.lru_cache(maxsize=1)
+def network_isolation_available() -> bool:
+    if os.name != "posix" or not shutil.which("unshare"):
+        return False
+    try:
+        probe = subprocess.run(
+            ["unshare", "-rn", "true"],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return probe.returncode == 0
 
-        limits = [
-            (resource.RLIMIT_AS, config.memory_mb * 1024 * 1024),
-            (resource.RLIMIT_CPU, config.cpu_s),
-            (resource.RLIMIT_FSIZE, config.max_file_mb * 1024 * 1024),
-        ]
-        for kind, value in limits:
-            try:
-                resource.setrlimit(kind, (value, value))
-            except (ValueError, OSError):
-                pass
 
-    return apply
+def _limits(config: SandboxConfig) -> dict[str, int]:
+    return {
+        "RLIMIT_AS": config.memory_mb * 1024 * 1024,
+        "RLIMIT_CPU": config.cpu_s,
+        "RLIMIT_FSIZE": config.max_file_mb * 1024 * 1024,
+        "RLIMIT_NPROC": config.max_procs,
+    }
+
+
+def build_argv(argv: list[str], config: SandboxConfig) -> list[str]:
+    if os.name != "posix":
+        return list(argv)
+    wrapped = [sys.executable, "-c", _LAUNCHER, json.dumps(_limits(config)), *argv]
+    if not config.network and network_isolation_available():
+        return ["unshare", "-rn", "--", *wrapped]
+    return wrapped
 
 
 def _kill_tree(proc: subprocess.Popen) -> None:
@@ -87,11 +123,6 @@ def run_command(
     stdin_text: str | None = None,
     pass_fds: Sequence[int] = (),
 ) -> ExecResult:
-    """Run a command with resource limits and a scrubbed environment.
-
-    `stdin_text` is delivered on stdin, which is how secrets (a nonce, test source) reach a child without
-    appearing in argv or the environment. `pass_fds` keeps the listed file descriptors open in the child.
-    """
     cwd = Path(cwd)
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
@@ -104,7 +135,7 @@ def run_command(
     posix = os.name == "posix"
     started = time.monotonic()
     proc = subprocess.Popen(
-        argv,
+        build_argv(argv, config),
         cwd=str(cwd),
         env=env,
         stdin=subprocess.DEVNULL if stdin_text is None else subprocess.PIPE,
@@ -113,7 +144,6 @@ def run_command(
         text=True,
         errors="replace",
         start_new_session=posix,
-        preexec_fn=_preexec(config) if posix else None,
         pass_fds=tuple(pass_fds) if posix else (),
     )
     timed_out = False

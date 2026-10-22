@@ -28,7 +28,7 @@ def test_paired_bootstrap_detects_a_consistent_gain():
 
 def test_a_perfect_gain_on_four_tasks_is_called_underpowered_not_significant():
     result = paired_bootstrap([0.9, 1.0, 0.8, 0.9], [0.5, 0.6, 0.4, 0.5])
-    assert result["ci_low"] > 0  # the bootstrap alone would have claimed a win
+    assert result["ci_low"] > 0
     assert result["underpowered"] and not result["significant"]
     assert result["p_value"] == pytest.approx(2 / 16)
 

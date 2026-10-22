@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Protocol
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
-# Marker the metering proxy puts in the body of its budget refusal (kept in sync with backend.core.meter).
 BUDGET_MARKER = "singularis_budget_exhausted"
 
 
@@ -156,7 +155,6 @@ class AnthropicClient:
         try:
             response = self._client.messages.create(**kwargs)
         except Exception as exc:
-            # the meter refuses calls once the run's budget is spent (HTTP 403 with a marker in the body)
             if BUDGET_MARKER in str(exc):
                 raise BudgetExceeded("budget refused by the meter") from exc
             raise
@@ -171,7 +169,7 @@ class AnthropicClient:
 
 
 class ScriptedClient:
-    """Deterministic client that replays a fixed script. Used for tests and dry runs."""
+    """Deterministic client that replays a fixed script."""
 
     def __init__(self, script: list[dict[str, Any]]):
         self._script = list(script)

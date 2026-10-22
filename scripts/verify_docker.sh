@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Build the stack and prove its guarantees from inside the container:
-# proxy allowlist, no direct egress for tool code, no secrets in tool environments,
-# read-only root, non-root user, dropped capabilities, and a working agent run under those limits.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

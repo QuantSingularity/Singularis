@@ -1,20 +1,3 @@
-# Singularis CI/CD: every GitHub Actions job in one workflow.
-#
-#   Continuous integration (every push and pull request)
-#     static        Python syntax, shell scripts, Dockerfile, compose file, workflow syntax, docs rules
-#     test          Full test suite on Python 3.10 to 3.13 with coverage
-#     frontend      Dashboard tests (jsdom plus the real server)
-#     browser       Dashboard in real Chromium (informational)
-#     smoke         Scripted end-to-end run of the CLI: eval, evolve, verify, report, serve
-#     proxy-policy  Egress allowlist tested against a real squid
-#     build         Wheel and sdist, installed into a clean environment
-#
-#   Manual
-#     live-baseline Small real-model baseline (manual, uses the ANTHROPIC_API_KEY secret)
-#
-# Setup: add the ANTHROPIC_API_KEY secret only if you want live-baseline. Protect the "live-model"
-# environment with required reviewers if you want an approval step before any paid run.
-
 name: CI/CD
 
 on:
@@ -66,12 +49,13 @@ jobs:
 
       - name: Python syntax and undefined names
         run: |
-          python -m pip install ruff
+          python -m pip install ruff mypy
           python -m compileall -q code scripts frontend/test
-          ruff check --select E9,F63,F7,F82,F401,F811,F841 --output-format=github code scripts frontend/test
+          ruff check --output-format=github .
+          ruff format --check .
+          mypy
 
       - name: Shell scripts
-        # SC2155 (declare and assign separately) is a style warning in the two Docker scripts, not a bug.
         run: shellcheck -e SC2155 scripts/*.sh
 
       - name: Dockerfile
@@ -99,7 +83,6 @@ jobs:
           import re
           import sys
 
-
           def cells(line):
               out, buf, tick = [], "", False
               for ch in line.strip().strip("|"):
@@ -112,7 +95,6 @@ jobs:
                       buf += ch
               out.append(buf)
               return out
-
 
           problems = []
           docs = [p for p in pathlib.Path(".").rglob("*.md") if "node_modules" not in p.parts and ".git" not in p.parts]
@@ -191,7 +173,7 @@ jobs:
         run: singularis validate-suite
 
       - name: Run the tests
-        run: python -m pytest --cov=ai_models --cov=backend --cov-report=term --cov-report=xml --junitxml=junit.xml
+        run: python -m pytest --cov=ai_models --cov=backend --cov-report=term --cov-report=xml --cov-fail-under=90 --junitxml=junit.xml
 
       - name: Upload results
         if: always()
@@ -238,7 +220,6 @@ jobs:
     name: Dashboard in real Chromium
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Informational: this scenario passes in jsdom in the frontend job; this adds a real browser.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4

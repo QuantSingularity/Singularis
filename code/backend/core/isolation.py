@@ -34,7 +34,6 @@ class Check:
 
 
 def connect_status(proxy_url: str, target: str, timeout: float = 8.0) -> int:
-    """Send an HTTP CONNECT through the proxy and return the status code it answers with."""
     parsed = urlparse(proxy_url)
     if not parsed.hostname or not parsed.port:
         raise ValueError(f"proxy url needs a host and port: {proxy_url!r}")
@@ -93,7 +92,6 @@ def check_proxy_policy(proxy_url: str | None) -> list[Check]:
 def check_direct_egress_blocked(
     target: tuple[str, int] = ("1.1.1.1", 443), timeout_s: float = 4.0
 ) -> Check:
-    """Run the connection from a tool-style subprocess: code the agent executes must have no route out."""
     code = (
         "import socket, sys\n"
         f"s = socket.socket(); s.settimeout({timeout_s})\n"

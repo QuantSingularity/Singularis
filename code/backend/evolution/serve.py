@@ -17,11 +17,7 @@ def make_server(
     frontend_dir: Path | None = None,
     allow_remote: bool = False,
 ) -> ThreadingHTTPServer:
-    """Serve the lineage viewer and a live report.json for an experiment root.
-
-    Only three fixed routes exist (/, /report.json, /healthz). The report contains agent-written text
-    and code diffs, so the server binds to loopback unless allow_remote is set explicitly.
-    """
+    """Serve the lineage viewer and a live report.json for an experiment root."""
     if host not in LOOPBACK and not allow_remote:
         raise ValueError(
             "refusing to bind a non-loopback address without allow_remote=True"

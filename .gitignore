@@ -8,3 +8,8 @@ runs/
 code/logs/*.log
 frontend/node_modules/
 .ruff_cache/
+.coverage
+.mypy_cache/
+coverage.xml
+junit.xml
+frontend/package-lock.json

@@ -57,7 +57,7 @@ def _run_config(args, llm: str | None = None) -> RunConfig:
         max_steps=args.max_steps,
         max_tokens=args.max_tokens,
         wall_timeout_s=args.timeout,
-        tool_sandbox=SandboxConfig(),
+        tool_sandbox=SandboxConfig(network=False),
         trials=getattr(args, "trials", 1),
         integrity=args.integrity,
     )
@@ -118,7 +118,6 @@ def cmd_evolve(args) -> int:
 
 
 def cmd_live(args) -> int:
-    """A small real-model run with a cost ceiling, a preflight check and an automatic summary."""
     tasks = _tasks(args)
     planned = live_plan(
         tasks, args.iterations, args.train_trials, args.heldout_trials, args.max_tokens
@@ -162,8 +161,11 @@ def cmd_lineage(args) -> int:
     print(
         f"{'id':<7}{'parent':<8}{'gen':<4}{'status':<9}{'train':<7}{'fitness':<9}{'heldout':<8}note"
     )
+
+    def fmt(v):
+        return "-" if v is None else f"{v:.3f}"
+
     for a in archive.all():
-        fmt = lambda v: "-" if v is None else f"{v:.3f}"
         print(
             f"{a.id:<7}{a.parent_id or '-':<8}{a.generation:<4}{a.status:<9}"
             f"{fmt(a.train_score):<7}{fmt(a.fitness):<9}{fmt(a.heldout_score):<8}{a.note[:60]!r}"

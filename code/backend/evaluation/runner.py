@@ -107,15 +107,11 @@ class SuiteResult:
 
 
 def fitness(mean_score: float, mean_tokens: float, token_cap: int) -> float:
-    """Correctness first, with a small penalty for token cost so that efficiency can evolve."""
     return mean_score - 0.05 * min(1.0, mean_tokens / max(1, token_cap))
 
 
 def absolute_llm_spec(spec: str) -> str:
-    """Resolve a relative scripted model path against the current directory.
-
-    Workers run inside the task workspace, so a relative path would point somewhere else there.
-    """
+    """Resolve a relative scripted model path against the current directory."""
     kind, _, arg = spec.partition(":")
     if kind == "scripted" and arg and not Path(arg).is_absolute():
         return f"scripted:{Path(arg).resolve()}"
@@ -125,8 +121,7 @@ def absolute_llm_spec(spec: str) -> str:
 def _worker_env(
     cfg: RunConfig, run_env: dict[str, str] | None = None
 ) -> dict[str, str]:
-    """Environment for a worker. It never contains the API key or a proxy: model traffic goes through the
-    meter, which holds the key (see backend.core.meter)."""
+    """Environment for a worker."""
     env = {"PYTHONPATH": str(SRC_ROOT)}
     if cfg.llm_spec.startswith("anthropic") and run_env:
         env.update(run_env)
@@ -218,7 +213,7 @@ def run_agent(
 
 
 def apply_metered_usage(trace: dict, metered: RunUsage) -> None:
-    """Replace the genome's self-reported token counts with the meter's. The originals are kept for audit."""
+    """Replace the genome's self-reported token counts with the meter's."""
     reported = trace.get("input_tokens", 0) + trace.get("output_tokens", 0)
     trace["reported_tokens"] = reported
     trace["input_tokens"] = metered.input_tokens
@@ -263,9 +258,7 @@ def run_task(
         else:
             findings = scan_findings(workspace)
     flags = list(findings.hard)
-    if (
-        outcome.tamper
-    ):  # the evaluator caught the run attacking it; this is not a heuristic
+    if outcome.tamper:
         flags.append(f"evaluator: {outcome.tamper}")
         passed = 0
     if flags and (cfg.integrity == "strict" or outcome.tamper):

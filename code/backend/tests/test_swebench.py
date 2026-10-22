@@ -56,7 +56,6 @@ def git_out(cwd, *args):
 
 @pytest.fixture
 def swe_env(tmp_path):
-    """A real git repository plus a SWE-bench formatted instance describing a fix to it."""
     source = tmp_path / "src" / "acme" / "calc"
     (source / "calc").mkdir(parents=True)
     (source / "tests").mkdir()

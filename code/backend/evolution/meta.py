@@ -24,11 +24,7 @@ def validate_template(template: str) -> str | None:
 
 
 class MetaPromptStore:
-    """Versions of the instruction template used to ask an agent to modify itself.
-
-    Variants are chosen with UCB1 on the fitness change they produced in children, so the process of
-    self-improvement is itself subject to selection. Evaluation and selection of agents stay frozen.
-    """
+    """Versions of the instruction template used to ask an agent to modify itself."""
 
     def __init__(self, root: Path, default_template: str):
         self.dir = Path(root) / "meta_prompts"
@@ -63,8 +59,10 @@ class MetaPromptStore:
             total = sum(v["uses"] for v in stats.values())
             variant = max(
                 stats,
-                key=lambda k: self._mean(stats[k]["deltas"])
-                + EXPLORATION * math.sqrt(2 * math.log(total) / stats[k]["uses"]),
+                key=lambda k: (
+                    self._mean(stats[k]["deltas"])
+                    + EXPLORATION * math.sqrt(2 * math.log(total) / stats[k]["uses"])
+                ),
             )
         return variant, self.template(variant)
 

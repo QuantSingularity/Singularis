@@ -1,9 +1,4 @@
-"""Real browser check of the live dashboard (Chromium via Playwright).
-
-NOT RUN in the environment where this repository was authored (the browser download was blocked there).
-The same scenario is covered in jsdom by code/backend/tests/test_frontend.py. Run this on your machine with
-scripts/test_frontend_browser.sh. It also saves a screenshot to runs/frontend_live.png for a visual check.
-"""
+"""Real browser check of the live dashboard (Chromium via Playwright)."""
 
 from __future__ import annotations
 
@@ -15,10 +10,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "code"))
 
-from backend.evolution.archive import Archive  # noqa: E402
-from backend.evolution.serve import make_server  # noqa: E402
-from playwright.sync_api import sync_playwright  # noqa: E402
-from testkit import good_meta_script, make_evolver  # noqa: E402
+from backend.evolution.archive import Archive
+from backend.evolution.serve import make_server
+from playwright.sync_api import sync_playwright
+from testkit import good_meta_script, make_evolver
 
 
 def main() -> None:
@@ -49,9 +44,9 @@ def main() -> None:
                 page.wait_for_function(
                     "document.querySelectorAll('#rows tr').length === 3", timeout=10_000
                 )
-                assert (
-                    page.locator("#rows tr.sel td").first.inner_text() == "a0001"
-                ), "selection must survive refresh"
+                assert page.locator("#rows tr.sel td").first.inner_text() == "a0001", (
+                    "selection must survive refresh"
+                )
                 assert page.locator("#status").inner_text().startswith("Live: updated")
 
                 out = ROOT / "runs"

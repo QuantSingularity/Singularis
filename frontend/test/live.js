@@ -1,6 +1,4 @@
 "use strict";
-// Drives the live refresh against a real HTTP server. The Python test controls the server and sends commands
-// on stdin ("go", "stop", "restart"); this script reports what the page did on stdout.
 const readline = require("readline");
 const { openPage, rows, selectedId, status, waitFor } = require("./helpers");
 

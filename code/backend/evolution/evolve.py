@@ -8,7 +8,7 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from ai_models import genome as _genome_pkg
 from backend.core.sandbox import SandboxConfig, run_command
@@ -119,10 +119,8 @@ class EvolveConfig:
     meta_evolve_every: int = 0
     max_genome_bytes: int = 200_000
     max_genome_files: int = 30
-    # repetitions per task. One trial per task makes selection mostly noise, so search evaluates repeatedly.
     train_trials: int = 2
     heldout_trials: int = 2
-    # stop before starting an iteration once metered tokens (self-modification + evaluation) reach this; 0 = no cap
     max_total_tokens: int = 0
 
 
@@ -147,7 +145,11 @@ def check_genome_files(genome: Path, max_bytes: int, max_files: int) -> str | No
 
 def validate_genome(genome: Path) -> str | None:
     config = SandboxConfig(
-        timeout_s=30, memory_mb=1024, cpu_s=40, env={"PYTHONPATH": str(SRC_ROOT)}
+        timeout_s=30,
+        memory_mb=1024,
+        cpu_s=40,
+        network=False,
+        env={"PYTHONPATH": str(SRC_ROOT)},
     )
     result = run_command(
         [sys.executable, "-c", VALIDATE_CODE, str(genome)], genome.parent, config
@@ -407,7 +409,7 @@ class Evolver:
             "output_tokens", 0
         )
         note = clip(trace.get("final_text", "") or trace.get("error", ""), 500)
-        report = {
+        report: dict[str, Any] = {
             "agent": child_id,
             "parent": parent.id,
             "status": "valid",
@@ -428,8 +430,6 @@ class Evolver:
             problem = validate_genome(candidate)
         findings = Findings()
         if problem is None and cfg.eval_run.integrity != "off":
-            # the agent's own code runs beside the budget wrapper and the model client, so it is scanned
-            # with the strict genome profile before it is ever executed
             findings = scan_genome(candidate)
             if findings.hard and cfg.eval_run.integrity == "strict":
                 problem = "integrity violation in genome: " + "; ".join(
@@ -468,7 +468,7 @@ class Evolver:
         )
         self._evaluate_train(child_id)
         child = self.archive.get(child_id)
-        delta = child.fitness - parent.fitness
+        delta = (child.fitness or 0.0) - (parent.fitness or 0.0)
         self.archive.update(child_id, delta=delta)
         self.meta_store.record(variant_id, delta)
         promising = delta >= 0

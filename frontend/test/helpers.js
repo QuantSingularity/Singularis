@@ -16,7 +16,6 @@ async function waitFor(predicate, description, timeoutMs = 10000) {
   }
 }
 
-// jsdom has no fetch, so give the page the real one from Node, resolving relative URLs against the page.
 function openPage(url) {
   return JSDOM.fromURL(url, {
     runScripts: "dangerously",

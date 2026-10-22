@@ -1,19 +1,3 @@
-"""A local metering proxy: the only place the real API key lives, and the only source of token counts.
-
-Genome code runs in a worker process that can be rewritten by the agent. Anything that process reports about
-itself (token counts, budgets) or holds (an API key) is under the agent's influence. The meter moves both
-out of reach:
-
-- The framework process starts the meter and keeps the real key in it. A worker receives a loopback URL with
-  an unguessable per-run path and a placeholder key, so there is no secret in its environment to read.
-- Every model call passes through the meter, which adds up the token usage the API itself reports and
-  refuses calls once the run's budget is spent. The runner records these numbers, not the genome's own.
-- On Linux the framework process marks itself non-dumpable, so a same-user child cannot read the key out of
-  /proc/<pid>/environ or /proc/<pid>/mem.
-
-Only non-streaming `POST /v1/messages` is supported, which is what `AnthropicClient` uses.
-"""
-
 from __future__ import annotations
 
 import json
@@ -54,23 +38,18 @@ class _Run:
 
 
 def harden_process() -> bool:
-    """Make this process non-dumpable (Linux), so same-user children cannot read its memory or environment."""
     if not sys.platform.startswith("linux"):
         return False
     try:
         import ctypes
 
         libc = ctypes.CDLL(None, use_errno=True)
-        return libc.prctl(4, 0, 0, 0, 0) == 0  # PR_SET_DUMPABLE = 4
+        return libc.prctl(4, 0, 0, 0, 0) == 0
     except Exception:
         return False
 
 
 def load_api_key(explicit: str | None = None) -> str | None:
-    """An explicit key wins, then the file named by ANTHROPIC_API_KEY_FILE, then ANTHROPIC_API_KEY.
-
-    The file form is preferred: an environment variable is also visible to anything that can read this
-    process's environment block."""
     if explicit:
         return explicit
     key_file = os.environ.get("ANTHROPIC_API_KEY_FILE")
@@ -97,7 +76,7 @@ class Meter:
         meter = self
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *args) -> None:  # keep the console quiet
+            def log_message(self, *args) -> None:
                 pass
 
             def _send(self, status: int, body: bytes) -> None:
@@ -138,7 +117,6 @@ class Meter:
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
 
-    # -- lifecycle -----------------------------------------------------------------------------------
     @property
     def port(self) -> int:
         return self._server.server_address[1]
@@ -161,7 +139,6 @@ class Meter:
     def base_url(self, run_id: str) -> str:
         return f"http://127.0.0.1:{self.port}/r/{run_id}"
 
-    # -- request handling ----------------------------------------------------------------------------
     def _handle(self, run_id: str, body: bytes) -> tuple[int, bytes]:
         def fail(status: int, kind: str, message: str) -> tuple[int, bytes]:
             return (
@@ -218,7 +195,10 @@ class Meter:
             usage = json.loads(payload).get("usage") or {}
         except (json.JSONDecodeError, AttributeError):
             usage = {}
-        read = lambda name: int(usage.get(name) or 0)  # noqa: E731
+
+        def read(name):
+            return int(usage.get(name) or 0)
+
         with self._lock:
             run = self._runs.get(run_id)
             if run is None:

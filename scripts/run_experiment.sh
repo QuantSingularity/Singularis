@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Compare evolution arms against the unmodified seed with confidence intervals.
-# Usage: scripts/run_experiment.sh [root] [iterations] [trials] [extra singularis experiment arguments]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

@@ -10,20 +10,20 @@ AlphaEvolve, with the engineering needed to run it reproducibly, measure it hone
 
 ## At a glance
 
-| Item               | Detail                                                                                                                                          |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Language           | Python 3.10 or newer, standard library only at runtime (the `anthropic` package is optional)                                                    |
-| What evolves       | `code/ai_models/genome/`: system prompt, seven tools, agent loop                                                                                |
-| What never changes | Evaluator, hidden tests, budgets, sandbox, selection, archive (the frozen engine in `code/backend/`)                                            |
-| Default model      | `claude-sonnet-5-5` through the Anthropic API, or a scripted model for tests                                                                    |
-| Benchmark          | 28 built-in tasks in 3 tracks: 11 train, 9 held-out, 8 fresh, plus SWE-bench style repository tasks                                             |
-| Search             | Open-ended archive or greedy hill climbing, rotating mutation focus, failure clustering                                                         |
-| Meta level         | Optional evolvable instruction template, chosen by a bandit                                                                                     |
-| Measurement        | Repeated trials in search and final runs, bootstrap interval plus exact sign-flip test, underpowered guard                                      |
-| Integrity          | Private result channel with canary tests, two-tier tamper scan (tasks and genomes), token metering outside the genome, signed records, manifest |
-| Containment        | Process sandbox by default, network-isolated container stack available                                                                          |
-| Tests              | 217 automated tests plus 2 that need node, none need an API key                                                                                 |
-| Size               | About 7,700 lines of Python excluding tests (about 2,900 of them are benchmark task data)                                                       |
+| Item               | Detail                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Language           | Python 3.10 or newer, standard library only at runtime (the `anthropic` package is optional)                                                           |
+| What evolves       | `code/ai_models/genome/`: system prompt, seven tools, agent loop                                                                                       |
+| What never changes | Evaluator, hidden tests, budgets, sandbox, selection, archive (the frozen engine in `code/backend/`)                                                   |
+| Default model      | `claude-sonnet-5-5` through the Anthropic API, or a scripted model for tests                                                                           |
+| Benchmark          | 28 built-in tasks in 3 tracks: 11 train, 9 held-out, 8 fresh, plus SWE-bench style repository tasks                                                    |
+| Search             | Open-ended archive or greedy hill climbing, rotating mutation focus, failure clustering                                                                |
+| Meta level         | Optional evolvable instruction template, chosen by a bandit                                                                                            |
+| Measurement        | Repeated trials in search and final runs, bootstrap interval plus exact sign-flip test, underpowered guard                                             |
+| Integrity          | Private result channel, canary and mirror tests, two-tier tamper scan (tasks and genomes), token metering outside the genome, signed records, manifest |
+| Containment        | Process sandbox (limits, process cap, network namespace) by default, container stack available                                                         |
+| Tests              | 240 automated tests plus 2 that need node, none need an API key                                                                                        |
+| Size               | About 7,900 lines of Python excluding tests (about 2,900 of them are benchmark task data)                                                              |
 
 ## Status
 
@@ -35,7 +35,7 @@ This repository ships infrastructure and verified tooling. It does not ship resu
 | Meta prompt evolution                     | Implemented and tested            | Bandit, validation and step tests                                                                           |
 | Benchmark (28 tasks)                      | Verified                          | Starters fail, references pass, each fix is individually required                                           |
 | Statistics and experiment protocol        | Implemented and tested            | Bootstrap, exact sign-flip test, underpowered guard, trials during search                                   |
-| Evaluator hardening                       | Implemented and attacked in tests | Forgery by thread, stdout, fd guessing, framework patching and early exit all fail closed                   |
+| Evaluator hardening                       | Implemented and attacked in tests | Forgery by thread, stdout, fd guessing, framework patching, early exit and frame walking all fail closed    |
 | Token metering and key isolation          | Implemented and tested end to end | A real worker runs through the meter with no key in its environment; token counts are recorded there        |
 | Integrity scan and signed records         | Implemented and tested            | Hard and review tiers; genomes scanned before they run; tamper evidence, not prevention                     |
 | SWE-bench adapter                         | Verified on a synthetic instance  | Real git repository in SWE-bench format; real SWE-bench data not tried                                      |
@@ -93,7 +93,7 @@ scripts/setup.sh                        # virtual environment and editable insta
 source .venv/bin/activate
 export ANTHROPIC_API_KEY=...            # not needed for tests or scripted runs
 
-scripts/run_tests.sh                    # 217 tests
+scripts/run_tests.sh                    # 240 tests
 scripts/run_baseline.sh                 # validate the benchmark, score the seed genome
 scripts/run_live.sh --dry-run           # worst-case cost of a small real-model run (no API calls)
 scripts/run_live.sh                     # that run: preflight, token cap, runs/live/LIVE_SUMMARY.md
@@ -184,15 +184,15 @@ The workflow in `.github/workflows/cicd.yml` defines eight jobs.
 
 ## Safety summary
 
-| Layer             | Protects against                                                         | Role                                                                               |
-| ----------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| Process sandbox   | Runaway CPU, memory, file size, output; path escapes; leaked environment | Basic resource limits and a scrubbed environment                                   |
-| Genome validation | A child that breaks the interface, adds odd files, or fails to import    | Interface and file policy checks                                                   |
-| Evaluator channel | Forged or hidden verdicts from solution code                             | Private result channel, per-run nonce and canary tests; see docs/SAFETY.md         |
-| Metering proxy    | API key theft by the genome, token under-reporting                       | Keeps the key out of the worker and counts tokens outside the genome               |
-| Integrity scan    | Evaluator tampering by solutions and genomes                             | Heuristic AST scan with hard and review tiers                                      |
-| Signed records    | After-the-fact edits to stored results                                   | Tamper evidence                                                                    |
-| Container stack   | Network access and host damage from agent code                           | Network-isolated stack, verified on your machine with `singularis isolation-check` |
+| Layer             | Protects against                                                         | Role                                                                                    |
+| ----------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Process sandbox   | Runaway CPU, memory, file size, output; path escapes; leaked environment | Resource limits, process cap, no network namespace when available, scrubbed environment |
+| Genome validation | A child that breaks the interface, adds odd files, or fails to import    | Interface and file policy checks                                                        |
+| Evaluator channel | Forged or hidden verdicts from solution code                             | Private result channel, per-run nonce, canary and mirror tests; see docs/SAFETY.md      |
+| Metering proxy    | API key theft by the genome, token under-reporting                       | Keeps the key out of the worker and counts tokens outside the genome                    |
+| Integrity scan    | Evaluator tampering by solutions and genomes                             | Heuristic AST scan with hard and review tiers                                           |
+| Signed records    | After-the-fact edits to stored results                                   | Tamper evidence                                                                         |
+| Container stack   | Network access and host damage from agent code                           | Network-isolated stack, verified on your machine with `singularis isolation-check`      |
 
 Read [docs/SAFETY.md](docs/SAFETY.md) before running experiments with a real API key.
 
@@ -204,7 +204,7 @@ Read [docs/SAFETY.md](docs/SAFETY.md) before running experiments with a real API
 | [docs/CLI.md](docs/CLI.md)                           | Every command and option with defaults                          |
 | [docs/BENCHMARKS.md](docs/BENCHMARKS.md)             | Task tracks, all 28 tasks, SWE-bench workflow                   |
 | [docs/SAFETY.md](docs/SAFETY.md)                     | Threat model, controls, container stack, verification status    |
-| [docs/TESTING.md](docs/TESTING.md)                   | What the 217 tests cover and how to run them                    |
+| [docs/TESTING.md](docs/TESTING.md)                   | What the 240 tests cover and how to run them                    |
 | [code/README.md](code/README.md)                     | Source layout and import rules                                  |
 | [frontend/README.md](frontend/README.md)             | The dashboard and its tests                                     |
 | [infrastructure/README.md](infrastructure/README.md) | The container stack files                                       |

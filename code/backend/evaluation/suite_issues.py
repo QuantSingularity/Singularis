@@ -4,7 +4,6 @@ from backend.evaluation.tasks import Task
 
 TESTS_NOTE = " The tests in tests/ show how the code is used; run them with python -m unittest. Do not edit them."
 
-# ---------------------------------------------------------------------------------------------------------------
 _INVOICE = Task(
     id="invoice_cents",
     split="train",
@@ -194,7 +193,6 @@ def build_invoice(lines, discount_pct=0, tax_rate=0.0):
     },
 )
 
-# ---------------------------------------------------------------------------------------------------------------
 _LEDGER = Task(
     id="ledger_replay",
     split="train",
@@ -363,7 +361,6 @@ def accrue(balance, annual_rate, days):
     },
 )
 
-# ---------------------------------------------------------------------------------------------------------------
 _TTL = Task(
     id="ttl_cache",
     split="heldout",
@@ -676,7 +673,6 @@ def cached(ttl, maxsize=128, clock=None):
     },
 )
 
-# ---------------------------------------------------------------------------------------------------------------
 _LIMITER = Task(
     id="rate_limiter",
     split="fresh",
@@ -892,7 +888,6 @@ class Limiter:
     },
 )
 
-# ---------------------------------------------------------------------------------------------------------------
 _MIGRATE = Task(
     id="migrations",
     split="fresh",

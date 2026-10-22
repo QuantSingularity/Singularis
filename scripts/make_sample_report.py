@@ -1,8 +1,4 @@
-"""Regenerate frontend/sample/report.json from a scripted (no API) evolution run.
-
-Run from the repository root with the package installed or code/ on PYTHONPATH:
-    python scripts/make_sample_report.py
-"""
+"""Regenerate frontend/sample/report.json from a scripted (no API) evolution run."""
 
 from __future__ import annotations
 
@@ -13,8 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "code"))
 
-from backend.evolution.report import write_report  # noqa: E402
-from testkit import dual_meta_script, make_evolver  # noqa: E402
+from backend.evolution.report import write_report
+from testkit import dual_meta_script, make_evolver
 
 
 def main() -> None:

@@ -57,8 +57,12 @@ class AgentRecord:
     created_at: float
 
 
+def _fit(record: AgentRecord) -> float:
+    return record.fitness if record.fitness is not None else 0.0
+
+
 class Archive:
-    """Tree of agent versions. Every valid agent is kept so promising branches can be revisited."""
+    """Tree of agent versions."""
 
     def __init__(self, root: Path):
         self.root = Path(root)
@@ -150,17 +154,12 @@ class Archive:
         candidates = [
             a for a in self.all() if a.status == "valid" and a.fitness is not None
         ]
-        return max(candidates, key=lambda a: a.fitness) if candidates else None
+        return max(candidates, key=_fit) if candidates else None
 
     def select_parent(
         self, rng: random.Random, strategy: str = "open_ended"
     ) -> AgentRecord:
-        """Pick the next parent.
-
-        open_ended: sample with weight sigmoid(10 * (fitness - midpoint)) / (1 + children), where midpoint
-        sits between the mean and the maximum fitness. Strong lineages stay in play while under-visited
-        branches still get explored.
-        greedy: always extend the fittest agent (the hill-climbing control)."""
+        """Pick the next parent."""
         if strategy not in SELECTIONS:
             raise ValueError(f"unknown selection strategy: {strategy}")
         candidates = [
@@ -169,13 +168,11 @@ class Archive:
         if not candidates:
             raise RuntimeError("archive has no evaluated agents")
         if strategy == "greedy":
-            return max(
-                candidates, key=lambda a: (a.fitness, -self.children_count(a.id))
-            )
-        scores = [a.fitness for a in candidates]
+            return max(candidates, key=lambda a: (_fit(a), -self.children_count(a.id)))
+        scores = [_fit(a) for a in candidates]
         midpoint = 0.5 * (max(scores) + sum(scores) / len(scores))
         weights = [
-            (1.0 / (1.0 + math.exp(-10.0 * (a.fitness - midpoint))))
+            (1.0 / (1.0 + math.exp(-10.0 * (_fit(a) - midpoint))))
             / (1 + self.children_count(a.id))
             for a in candidates
         ]

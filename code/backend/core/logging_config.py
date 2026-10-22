@@ -11,10 +11,7 @@ LOGGER_NAME = "singularis"
 def setup_logging(
     log_dir: Path | str | None = None, level: int = logging.INFO
 ) -> logging.Logger:
-    """Log to the console and to <log_dir>/singularis.log.
-
-    The directory defaults to code/logs and can be overridden with SINGULARIS_LOG_DIR.
-    """
+    """Log to the console and to <log_dir>/singularis.log."""
     logger = logging.getLogger(LOGGER_NAME)
     if logger.handlers:
         return logger

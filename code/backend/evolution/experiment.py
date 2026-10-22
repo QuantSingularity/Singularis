@@ -78,11 +78,6 @@ def run_experiment(
     cfg: ExperimentConfig,
     log: Callable[[str], None] = print,
 ) -> dict:
-    """Compare evolution arms against the unmodified seed genome on tasks the search never selects on.
-
-    Search uses the train split (and reports held-out for promising children). Final scores use repeated
-    trials on the held-out and fresh splits and are compared with a paired bootstrap over tasks.
-    """
     unknown = [a for a in cfg.arms if a not in SELECTIONS]
     if unknown:
         raise ValueError(f"unknown arms: {unknown}")
@@ -123,6 +118,8 @@ def run_experiment(
         )
         evolver.run()
         best = evolver.archive.best()
+        if best is None:
+            raise RuntimeError(f"arm {arm} produced no valid agent")
         final = _final_eval(
             evolver.archive.genome_dir(best.id),
             tasks,

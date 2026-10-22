@@ -1,6 +1,6 @@
 # Testing
 
-217 automated tests (plus 2 that need node) run in about a minute. None of them need an API key or network access. Model behavior is
+240 automated tests (plus 2 that need node) run in about a minute. None of them need an API key or network access. Model behavior is
 replaced by scripted models that replay fixed tool calls, so the loop, the evaluator and the containment logic are
 tested for real while the model itself is not.
 
@@ -12,7 +12,7 @@ tested for real while the model itself is not.
 | One file           | `python -m pytest code/backend/tests/test_evolve.py`                                       |
 | One test           | `python -m pytest code/backend/tests/test_evolve.py -k valid_child`                        |
 | Dashboard tests    | `cd frontend && npm install`, then `python -m pytest code/backend/tests/test_frontend.py`  |
-| Real browser check | `scripts/test_frontend_browser.sh` (installs Playwright and Chromium; not part of the 217) |
+| Real browser check | `scripts/test_frontend_browser.sh` (installs Playwright and Chromium; not part of the 240) |
 
 Configuration lives in `pytest.ini` at the repository root (`testpaths = code`, `pythonpath = code`, prepend import mode).
 Shared helpers are in `code/testkit.py` and fixtures in `code/conftest.py`; the fixtures send logs to a temporary
@@ -22,11 +22,12 @@ directory so tests never write to `code/logs`.
 
 ### Model side (`code/ai_models/tests/`)
 
-| File                   | Tests | Covers                                                                                                                                                                                                           |
-| ---------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_genome_agent.py` | 6     | A scripted agent solving a task end to end; an idle agent; path escape reported to the agent and not executed; runaway agent stopped by the budget; a broken genome contained; tool errors do not crash the loop |
-| `test_genome_tools.py` | 6     | `edit_file` (unique match, missing, ambiguous, outside workspace) and `search_text` (matches, no match, bad pattern, hidden and binary files)                                                                    |
-| `test_llm.py`          | 6     | Message conversion for the Anthropic API, scripted client, token and call budgets, model spec parsing                                                                                                            |
+| File                    | Tests | Covers                                                                                                                                                                                                           |
+| ----------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_genome_agent.py`  | 6     | A scripted agent solving a task end to end; an idle agent; path escape reported to the agent and not executed; runaway agent stopped by the budget; a broken genome contained; tool errors do not crash the loop |
+| `test_genome_tools.py`  | 6     | `edit_file` (unique match, missing, ambiguous, outside workspace) and `search_text` (matches, no match, bad pattern, hidden and binary files)                                                                    |
+| `test_genome_direct.py` | 11    | Every tool called in process, the agent loop stop reasons, context compaction, the genome loader and contract, task directory loading                                                                            |
+| `test_llm.py`           | 6     | Message conversion for the Anthropic API, scripted client, token and call budgets, model spec parsing                                                                                                            |
 
 ### Engine (`code/backend/tests/`)
 
@@ -36,6 +37,7 @@ directory so tests never write to `code/logs`.
 | `test_evolve.py`              | 7     | A full self-modification step with a valid child; a child that breaks the contract is rejected; genome file policy; import and contract validation; diffs                         |
 | `test_evaluator_hardening.py` | 17    | Six forgery attacks fail closed, canaries catch framework patching, tests not on disk, timeouts discarded, repository summary parsing and conftest reset                          |
 | `test_experiment.py`          | 3     | Arms versus seed with confidence intervals; unknown arm; report wording for reliable gains                                                                                        |
+| `test_forgery.py`             | 10    | Frame walking forgery caught by mirrors, obfuscated attribute rules, mirror generation, network namespace, process limits                                                         |
 | `test_frontend.py`            | 2     | Dashboard render checks including hostile input; live refresh against the real server (update, selection kept, server loss, recovery)                                             |
 | `test_integrity.py`           | 49    | Every tamper pattern, harmless code, strict, warn and off modes                                                                                                                   |
 | `test_isolation.py`           | 11    | Strict and permissive proxies, unreachable proxy, open and closed routes, scrubbed tool environment, leaky configuration, mount and status parsing, exit codes                    |
@@ -43,6 +45,7 @@ directory so tests never write to `code/logs`.
 | `test_meta.py`                | 7     | Template validation, UCB choice, duplicates, persistence, reward recording, invalid child penalty, meta prompt evolution                                                          |
 | `test_meter.py`               | 15    | Token counting, key isolation, budgets, run separation, `/proc` protection, a real worker run end to end, token under-reporting overruled                                         |
 | `test_report_and_cli.py`      | 5     | Report content, `report`, `suite` and `lineage` commands, log file                                                                                                                |
+| `test_worker.py`              | 2     | The worker entry point end to end and with a missing task file                                                                                                                    |
 | `test_runner_paths.py`        | 3     | Relative scripted model paths resolved before a worker starts, other specs untouched, a relative path working end to end                                                          |
 | `test_sandbox.py`             | 13    | Path confinement, symlink escape, timeouts, output clipping, scrubbed environment, config round trip                                                                              |
 | `test_search.py`              | 8     | Failure classes and clusters, greedy selection, unknown strategy, focus rotation, greedy evolver, usage and manifest files                                                        |

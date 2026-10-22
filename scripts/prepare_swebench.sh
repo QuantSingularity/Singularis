@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Turn a SWE-bench style dataset file into task directories and check them.
-# Usage: scripts/prepare_swebench.sh DATASET.jsonl [out_dir] [python_with_repo_dependencies] [extra prepare arguments]
-# Needs network access to clone the repositories (run this on the host, not inside the isolated container).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

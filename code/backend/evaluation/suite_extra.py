@@ -1,10 +1,3 @@
-"""More held-out and fresh tasks, so that the final comparisons rest on enough tasks to say anything.
-
-Every task here is checked by `validate_tasks`: the starter files must fail the hidden tests and the
-reference solution must pass them. Only held-out and fresh tasks live in this module; the search never
-selects on them.
-"""
-
 from __future__ import annotations
 
 from backend.evaluation.tasks import Task
@@ -499,7 +492,6 @@ R = [0.01, -0.02, 0.03, -0.01]
 
 class SortinoTests(unittest.TestCase):
     def test_known_value(self):
-        # mean 0.0025, downside deviation sqrt(0.000125)
         self.assertAlmostEqual(
             sortino_ratio(R, periods_per_year=1), 0.0025 / math.sqrt(0.000125), places=6
         )
@@ -509,8 +501,6 @@ class SortinoTests(unittest.TestCase):
         self.assertAlmostEqual(sortino_ratio(R), one * math.sqrt(252), places=6)
 
     def test_target_shifts_both_terms(self):
-        # excess over 0.005: [0.005, -0.025, 0.025, -0.015]; mean -0.0025
-        # downside: [0, -0.025, 0, -0.015] -> sqrt((0.000625 + 0.000225) / 4)
         expected = -0.0025 / math.sqrt(0.00085 / 4)
         self.assertAlmostEqual(sortino_ratio(R, target=0.005, periods_per_year=1), expected, places=6)
 

@@ -25,8 +25,7 @@ class Task:
 
 
 def load_tasks_from_dir(root: Path) -> list[Task]:
-    """Load tasks from a directory. Each subdirectory holds task.json
-    ({"prompt": ..., "split": ...}), hidden_tests.py, and an optional files/ tree."""
+    """Load tasks from a directory."""
     root = Path(root)
     tasks: list[Task] = []
     for directory in sorted(p for p in root.iterdir() if p.is_dir()):
@@ -57,7 +56,6 @@ def load_tasks_from_dir(root: Path) -> list[Task]:
 
 
 def _load_repo_task(directory: Path, meta: dict) -> Task:
-    """A repository task: a checkout of the base commit in repo/, the hidden test patch, and the test ids."""
     gold = directory / "gold.patch"
     return Task(
         id=meta.get("id", directory.name),

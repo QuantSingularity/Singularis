@@ -1,7 +1,4 @@
-"""Frontend tests. They run the viewer's real JavaScript in jsdom, against the real HTTP server for live refresh.
-
-jsdom is a simulated browser, not Chrome. Install the test dependency once with `cd frontend && npm install`.
-The tests are skipped when node or jsdom is unavailable."""
+"""Frontend tests."""
 
 import queue
 import shutil
@@ -49,8 +46,6 @@ def test_render_checks_pass():
 
 
 class Page:
-    """The jsdom page driven by frontend/test/live.js, with line-based commands in and events out."""
-
     def __init__(self, url: str):
         self.proc = subprocess.Popen(
             ["node", "test/live.js", url],

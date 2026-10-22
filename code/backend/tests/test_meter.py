@@ -1,5 +1,3 @@
-"""The meter holds the API key and counts tokens, so a rewritten genome can do neither."""
-
 import json
 import os
 import subprocess
@@ -27,8 +25,6 @@ REAL_KEY = "sk-real-secret-key"
 
 
 class FakeUpstream:
-    """Stands in for api.anthropic.com: records what it receives and answers with a fixed usage."""
-
     def __init__(self, usage=(100, 20), content=None):
         self.requests = []
         self.usage = usage
@@ -114,13 +110,11 @@ def test_the_real_key_is_used_upstream_and_the_clients_key_is_ignored(meter, ups
 
 def test_token_budget_is_enforced_by_the_meter(meter):
     run = meter.open_run(max_tokens=150, max_calls=99)
-    assert post(meter.base_url(run))[0] == 200  # 120 used
-    assert (
-        post(meter.base_url(run))[0] == 200
-    )  # 240 used, over budget but each call is allowed to finish
+    assert post(meter.base_url(run))[0] == 200
+    assert post(meter.base_url(run))[0] == 200
     status, body = post(meter.base_url(run))
     assert status == 403 and BUDGET_MARKER in body["error"]["message"]
-    assert meter.close_run(run).calls == 2  # the refused call never reached the API
+    assert meter.close_run(run).calls == 2
 
 
 def test_call_budget_is_enforced_by_the_meter(meter, upstream):
@@ -189,8 +183,6 @@ def test_the_budget_refusal_becomes_budget_exceeded(monkeypatch):
         AnthropicClient("m").complete("s", [], [])
 
 
-# ---- the process-level protection ----------------------------------------------------------------
-
 DUMP_PROBE = textwrap.dedent(
     """
     import ctypes, os, subprocess, sys
@@ -206,7 +198,7 @@ DUMP_PROBE = textwrap.dedent(
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux only")
 def test_a_non_dumpable_parent_hides_its_environment_from_a_same_user_child():
     def run(mode):
-        def drop():  # root can read everything, so test as an ordinary user
+        def drop():
             os.setgid(65534)
             os.setuid(65534)
 
@@ -240,8 +232,6 @@ def test_harden_process_clears_the_dumpable_flag(tmp_path):
     assert out.stdout.split() == ["True", "0"], out.stderr
 
 
-# ---- end to end: a real worker process talking to a fake API through the meter ---------------------
-
 STUB_SDK = textwrap.dedent(
     """
     import json, os, urllib.request
@@ -272,7 +262,6 @@ STUB_SDK = textwrap.dedent(
 
 @pytest.fixture
 def live_path(tmp_path, monkeypatch, upstream):
-    """A worker that imports a stub `anthropic`, a fake API that answers with a `finish` call, a real meter."""
     sdk = tmp_path / "sdk"
     sdk.mkdir()
     dump = tmp_path / "env_dump.json"
@@ -309,7 +298,6 @@ def test_a_real_worker_runs_through_the_meter_without_ever_seeing_the_key(
         1,
     )
     assert trace["token_report_mismatch"] is False
-    # a placeholder key and the loopback bypass only: no real key, no HTTPS_PROXY / HTTP_PROXY
     assert seen == {"ANTHROPIC_API_KEY": "metered", "NO_PROXY": "127.0.0.1,localhost"}
     assert [r["key"] for r in live_path.upstream.requests] == [REAL_KEY]
 
@@ -330,5 +318,5 @@ def test_a_genome_that_under_reports_its_tokens_is_overruled_and_flagged(
     assert (trace["input_tokens"], trace["output_tokens"]) == (
         100,
         20,
-    )  # the meter's numbers win
+    )
     assert trace["token_report_mismatch"] is True

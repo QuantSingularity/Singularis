@@ -1,15 +1,3 @@
-"""Helpers for a small real-model run: what it can cost at most, whether the path works, what happened.
-
-`plan` needs no API access: it counts the agent runs a configuration implies and multiplies by the per-run
-token budget, which is a hard upper bound because the meter refuses calls beyond that budget.
-
-`preflight` makes one tiny real call through the metering proxy, so a missing key, a missing SDK, or a broken
-proxy shows up in seconds rather than after the first evaluation.
-
-`summarize` turns a finished run directory into a short markdown report. Token counts in it come from the
-meter, not from the agents.
-"""
-
 from __future__ import annotations
 
 import json
@@ -31,7 +19,6 @@ def plan(
     train = sum(1 for t in tasks if t.split == "train")
     heldout = sum(1 for t in tasks if t.split == "heldout")
     seed_runs = train * train_trials + heldout * heldout_trials
-    # per iteration: one self-modification run, the train suite, and (if the child is promising) the held-out suite
     per_iteration = 1 + train * train_trials + heldout * heldout_trials
     runs = seed_runs + iterations * per_iteration
     return {
@@ -45,7 +32,7 @@ def plan(
 
 
 def preflight(llm_spec: str) -> tuple[list[str], dict]:
-    """Return (problems, info). An empty problem list means one real call went through the meter."""
+    """Return (problems, info)."""
     kind, _, model = llm_spec.partition(":")
     if kind != "anthropic":
         return [f"a live run needs --llm anthropic:<model>, got {llm_spec!r}"], {}
@@ -120,7 +107,9 @@ def summarize(root: Path, planned: dict | None = None) -> str:
                 solution_review += bool(reviews)
                 mismatches += any("meter" in x for x in reviews)
 
-    fmt = lambda v: "-" if v is None else f"{v:.3f}"  # noqa: E731
+    def fmt(v):
+        return "-" if v is None else f"{v:.3f}"
+
     lines = ["# Live run summary", ""]
     spent = usage.get("meta_tokens", 0) + usage.get("eval_tokens", 0)
     line = (
