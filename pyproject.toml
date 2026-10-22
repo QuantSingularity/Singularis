@@ -27,10 +27,14 @@ include = ["ai_models*", "backend*"]
 line-length = 88
 target-version = "py310"
 extend-exclude = ["frontend/node_modules"]
+src = ["code"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["E501", "UP037", "UP006", "UP007", "UP035", "RUF012", "B011", "SIM117", "B904"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ai_models", "backend", "testkit"]
 
 [tool.ruff.lint.per-file-ignores]
 "scripts/*" = ["E402"]
