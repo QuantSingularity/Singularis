@@ -1,6 +1,7 @@
 import json
 
 import pytest
+
 from backend.evolution.meta import INVALID_REWARD, MetaPromptStore, validate_template
 from testkit import (
     NEW_META_TEMPLATE,

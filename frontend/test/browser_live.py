@@ -10,9 +10,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "code"))
 
+from playwright.sync_api import sync_playwright
+
 from backend.evolution.archive import Archive
 from backend.evolution.serve import make_server
-from playwright.sync_api import sync_playwright
 from testkit import good_meta_script, make_evolver
 
 

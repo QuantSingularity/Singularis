@@ -1,4 +1,5 @@
 import pytest
+
 from backend.evaluation.evaluator import validate_tasks
 from backend.evaluation.suite import BUILTIN_TASKS
 from backend.evaluation.tasks import load_tasks_from_dir

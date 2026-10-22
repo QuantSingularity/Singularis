@@ -3,6 +3,7 @@ import socketserver
 import threading
 
 import pytest
+
 from backend.cli import main
 from backend.core.isolation import (
     check_direct_egress_blocked,

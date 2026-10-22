@@ -1,4 +1,5 @@
 import pytest
+
 from ai_models.llm import (
     Budget,
     BudgetedClient,

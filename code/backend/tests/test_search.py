@@ -1,6 +1,7 @@
 import random
 
 import pytest
+
 from backend.evolution.archive import Archive
 from backend.evolution.evolve import FOCI, cluster_failures, failure_class
 from testkit import good_meta_script, make_evolver

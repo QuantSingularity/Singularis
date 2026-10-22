@@ -1,6 +1,7 @@
 import json
 
 import pytest
+
 from ai_models.genome.agent import CONTEXT_CHAR_LIMIT, _compact, solve
 from ai_models.genome.tools import ToolContext, build_tools, execute
 from ai_models.llm import BudgetExceeded, Message, ToolCall, make_llm
