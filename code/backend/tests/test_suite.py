@@ -84,9 +84,9 @@ def test_every_fix_is_individually_necessary(task):
 
     for omitted in task.reference:
         others = [rel for rel in task.reference if rel != omitted]
-        assert (
-            evaluate(task, _workspace(task, others)).score < 1.0
-        ), f"{omitted} is not needed to pass {task.id}"
+        assert evaluate(task, _workspace(task, others)).score < 1.0, (
+            f"{omitted} is not needed to pass {task.id}"
+        )
 
 
 def test_final_splits_have_enough_tasks_to_support_a_significance_claim():

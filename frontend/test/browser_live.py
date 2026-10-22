@@ -45,9 +45,9 @@ def main() -> None:
                 page.wait_for_function(
                     "document.querySelectorAll('#rows tr').length === 3", timeout=10_000
                 )
-                assert (
-                    page.locator("#rows tr.sel td").first.inner_text() == "a0001"
-                ), "selection must survive refresh"
+                assert page.locator("#rows tr.sel td").first.inner_text() == "a0001", (
+                    "selection must survive refresh"
+                )
                 assert page.locator("#status").inner_text().startswith("Live: updated")
 
                 out = ROOT / "runs"
