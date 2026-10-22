@@ -3,10 +3,11 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from ai_models.llm import BudgetExceeded, LLMClient, Message
 from backend.core.sandbox import SandboxConfig
 from backend.core.text import clip
 from backend.core.trace import RunTrace, Step, ToolRecord
+
+from ai_models.llm import BudgetExceeded, LLMClient, Message
 
 from .prompts import SYSTEM_PROMPT
 from .tools import ToolContext, build_tools, execute

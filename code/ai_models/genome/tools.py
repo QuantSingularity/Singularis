@@ -6,9 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from ai_models.llm import ToolCall, ToolSpec
 from backend.core.sandbox import SandboxConfig, resolve_in_workspace, run_command
 from backend.core.text import clip
+
+from ai_models.llm import ToolCall, ToolSpec
 
 MAX_READ_CHARS = 20_000
 MAX_WRITE_CHARS = 200_000
