@@ -211,4 +211,4 @@ Read [docs/SAFETY.md](docs/SAFETY.md) before running experiments with a real API
 
 ## License
 
-MIT. Developed under QuantSingularity Research Institute.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
